@@ -1,10 +1,10 @@
-# Spec Delta
+# pacientes Specification
 
 ## Purpose
 
 Define o comportamento observável para cadastrar, consultar, editar e remover pacientes, mantendo somente dados básicos de identificação e contato sob validação do backend.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Cadastrar paciente
 
@@ -12,7 +12,7 @@ O sistema SHALL permitir cadastrar um paciente com nome e dados básicos de cont
 
 O nome SHALL ser obrigatório e não poderá estar vazio nem conter somente espaços.
 
-Telefone e e-mail poderão ser informados. Quando presente, o telefone SHALL conter de 8 a 15 dígitos, poderá usar espaços, parênteses e hífens como formatação e poderá ter um único sinal `+` somente no início. O e-mail SHALL ser validado como endereço de e-mail pelo backend; espaços externos serão removidos antes da validação.
+Telefone e e-mail poderão ser informados. Quando presentes, deverão respeitar os critérios de validação definidos para esses campos.
 
 O sistema SHALL atribuir ao paciente um identificador próprio, sem utilizar dados pessoais como identificador.
 
@@ -31,13 +31,16 @@ O sistema SHALL atribuir ao paciente um identificador próprio, sem utilizar dad
 - **WHEN** uma solicitação contém telefone ou e-mail que não atendem aos critérios de validação definidos
 - **THEN** o sistema rejeita a solicitação com erro de validação e não persiste o paciente
 
----
-
 ### Requirement: Consultar pacientes
 
 O sistema SHALL permitir listar pacientes cadastrados e consultar um paciente individualmente pelo identificador.
 
-As respostas SHALL incluir somente os dados necessários ao consumidor da API, como identificador, nome, telefone e e-mail.
+As respostas SHALL incluir somente os dados necessários ao consumidor da API:
+
+- identificador;
+- nome;
+- telefone;
+- e-mail.
 
 Campos internos ou não destinados ao consumidor da API SHALL ser omitidos das respostas.
 
@@ -56,17 +59,19 @@ Campos internos ou não destinados ao consumidor da API SHALL ser omitidos das r
 - **WHEN** uma solicitação informa um identificador sem paciente correspondente
 - **THEN** o sistema retorna um erro de não encontrado sem expor dados de outros pacientes
 
----
-
 ### Requirement: Editar paciente
 
 O sistema SHALL permitir editar nome, telefone e e-mail de um paciente existente.
 
 Campos não enviados SHALL preservar seus valores atuais.
 
-Quando o nome for enviado, ele não poderá estar vazio nem conter somente espaços.
+Quando um nome válido for enviado, o sistema SHALL atualizar o nome do paciente.
 
-Quando telefone ou e-mail forem enviados, deverão respeitar os critérios de validação definidos para esses campos: telefone de 8 a 15 dígitos com formatação permitida e e-mail válido após remover espaços externos.
+Quando o nome estiver ausente ou for recebido como valor vazio no PATCH, o sistema SHALL preservar o nome atual do paciente, considerando a forma como o Xano normaliza inputs opcionais nesta operação.
+
+Quando telefone ou e-mail forem enviados com valor válido, o sistema SHALL atualizar esses campos.
+
+Quando telefone ou e-mail forem enviados vazios, o sistema SHALL permitir a remoção desses valores.
 
 A edição não poderá alterar o identificador do paciente.
 
@@ -75,17 +80,20 @@ A edição não poderá alterar o identificador do paciente.
 - **WHEN** uma solicitação válida atualiza um ou mais dados de um paciente existente
 - **THEN** o sistema persiste as alterações, preserva os campos não enviados e retorna os dados básicos atualizados
 
-#### Scenario: Editar com dados inválidos
+#### Scenario: Preservar nome ausente ou vazio no PATCH
 
-- **WHEN** uma solicitação de edição envia nome vazio ou contendo somente espaços, telefone inválido ou e-mail inválido
-- **THEN** o sistema rejeita a solicitação sem aplicar alterações
+- **WHEN** uma solicitação de edição não envia o nome ou o Xano recebe o nome como valor vazio
+- **THEN** o sistema preserva o nome atual do paciente
+
+#### Scenario: Remover telefone ou e-mail
+
+- **WHEN** uma solicitação de edição envia telefone ou e-mail como valor vazio
+- **THEN** o sistema remove o valor correspondente sem alterar os demais campos
 
 #### Scenario: Editar paciente inexistente
 
 - **WHEN** uma solicitação de edição informa um identificador sem paciente correspondente
 - **THEN** o sistema retorna um erro de não encontrado e não cria um novo paciente
-
----
 
 ### Requirement: Remover paciente
 
@@ -107,15 +115,23 @@ Nesta change, a remoção de paciente poderá ser implementada sem considerar re
 - **WHEN** uma solicitação de remoção informa um identificador sem paciente correspondente
 - **THEN** o sistema retorna um erro de não encontrado
 
----
-
 ### Requirement: Validar operações no backend
 
 O sistema SHALL aplicar no backend as validações de campos e a verificação de existência do paciente para operações por identificador.
 
 Falhas SHALL retornar erros consistentes e não poderão deixar alterações parciais nos dados do paciente.
 
-O backend SHALL validar telefone com os critérios definidos nesta capability e validar e-mail usando o tipo nativo de e-mail do Xano.
+Para telefone, quando informado, serão aceitos:
+
+- dígitos;
+- espaços;
+- parênteses;
+- hífen;
+- sinal `+` somente no início.
+
+O telefone deverá possuir entre 8 e 15 dígitos reais, desconsiderando caracteres de formatação.
+
+O e-mail deverá utilizar a validação de tipo de e-mail disponibilizada pelo Xano.
 
 #### Scenario: Rejeitar dados inválidos sem persistência parcial
 

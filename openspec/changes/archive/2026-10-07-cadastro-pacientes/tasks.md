@@ -12,7 +12,7 @@
 
 - [x] 2.1 Implementar o cadastro de pacientes no backend; verificar que a resposta contém identificador, nome, telefone e e-mail.
 
-- [ ] 2.2 Verificar que coincidências em nome, telefone ou e-mail não impedem o cadastro de pacientes distintos.
+- [x] 2.2 Verificar que coincidências em nome, telefone ou e-mail não impedem o cadastro de pacientes distintos.
 
 - [x] 2.3 Implementar a listagem de pacientes; verificar retorno de lista vazia quando não houver registros e retorno somente dos campos permitidos.
 
@@ -26,15 +26,15 @@
 
 - [x] 3.3 Implementar remoção física de paciente no escopo desta change.
 
-- [ ] 3.4 Verificar que o paciente removido não aparece mais nas consultas e que a tentativa de remover um identificador inexistente retorna erro de não encontrado.
+- [x] 3.4 Verificar que o paciente removido não aparece mais nas consultas e que a tentativa de remover um identificador inexistente retorna erro de não encontrado.
 
 ## 4. Verificação integrada
 
 - [x] 4.1 Validar os artefatos XanoScript utilizando as ferramentas disponíveis.
 
-- [ ] 4.2 Executar verificações das operações de cadastro, consulta, edição e remoção.
+- [x] 4.2 Executar verificações das operações de cadastro, consulta, edição e remoção.
 
-- [ ] 4.3 Confirmar que entradas inválidas não geram alterações parciais nos dados.
+- [x] 4.3 Confirmar que entradas inválidas não geram alterações parciais nos dados.
 
 - [x] 4.4 Confirmar que as respostas da API expõem somente identificador, nome, telefone e e-mail.
 
