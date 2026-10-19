@@ -1,50 +1,35 @@
 import streamlit as st
 
+from ui import apply_styles, show_page_header
 
-st.markdown(
-    """
-    <style>
-        .stApp {
-            background-color: #f3f8fb;
-            color: #123b52;
-        }
-        h1, h2, h3 {
-            color: #0f4c81;
-        }
-        .card {
-            background: #ffffff;
-            border: 1px solid #dfeaf3;
-            border-radius: 16px;
-            padding: 1.25rem 1.35rem;
-            box-shadow: 0 4px 14px rgba(15, 76, 129, 0.08);
-            margin-top: 1rem;
-        }
-        .card-title {
-            color: #0f4c81;
-            font-size: 1.2rem;
-            font-weight: 700;
-            margin-bottom: 0.4rem;
-        }
-        .card-text {
-            color: #3d5d72;
-            line-height: 1.7;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
+
+apply_styles()
+show_page_header(
+    "Pacientes",
+    "Consulte e organize as informações dos pacientes do consultório.",
+    "👥",
 )
 
+search_column, button_column = st.columns([3, 1])
+with search_column:
+    st.text_input(
+        "Buscar paciente",
+        placeholder="Busca disponível após a integração",
+        disabled=True,
+    )
+with button_column:
+    st.write("")
+    st.button(
+        "Novo paciente",
+        icon=":material/person_add:",
+        disabled=True,
+        use_container_width=True,
+    )
 
-st.title("Pacientes")
-st.markdown(
-    """
-    <div class='card'>
-        <div class='card-title'>Módulo de pacientes</div>
-        <div class='card-text'>
-            Esta área será desenvolvida em uma etapa futura. O objetivo será organizar a gestão dos pacientes
-            e integrar as funcionalidades do consultório conforme a evolução do sistema.
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.dataframe(
+    {"ID": [], "Nome": [], "Telefone": [], "E-mail": []},
+    hide_index=True,
+    use_container_width=True,
+    height=220,
 )
+st.info("Integração com Xano ainda não disponível.")
