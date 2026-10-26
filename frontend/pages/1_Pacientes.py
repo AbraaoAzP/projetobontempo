@@ -1,18 +1,6 @@
-import os
-
 import streamlit as st
 
-from services.listagens import (
-    ConfiguracaoAusenteError,
-    ErroHttpError,
-    ErroTransporteError,
-    ListagemError,
-    RespostaInvalidaError,
-    XANO_PACIENTES_URL_ENV,
-    integracao_habilitada,
-    invalidar_cache_pacientes,
-    listar_pacientes,
-)
+from services import database
 from ui import apply_styles, show_page_header
 
 
@@ -23,69 +11,45 @@ show_page_header(
     "👥",
 )
 
-search_column, button_column = st.columns([3, 1])
-with search_column:
-    st.text_input(
-        "Buscar paciente",
-        placeholder="Busca disponível após a integração",
-        disabled=True,
+with st.form("cadastro_paciente", clear_on_submit=True):
+    st.subheader("Cadastrar paciente")
+    st.caption("* Campos obrigatórios.")
+    nome = st.text_input(
+        "Nome *",
+        placeholder="Digite o nome completo",
+        label_visibility="visible",
     )
-with button_column:
-    st.write("")
-    st.button(
-        "Novo paciente",
+    telefone = st.text_input(
+        "Telefone *",
+        placeholder="Ex.: (11) 99999-9999",
+        label_visibility="visible",
+    )
+    email = st.text_input(
+        "Email",
+        placeholder="Ex.: exemplo@email.com",
+        help="Opcional.",
+        label_visibility="visible",
+    )
+    cadastrar = st.form_submit_button(
+        "Cadastrar paciente",
+        type="primary",
         icon=":material/person_add:",
-        disabled=True,
-        use_container_width=True,
-    )
-    atualizar = st.button(
-        "Atualizar",
-        icon=":material/refresh:",
-        use_container_width=True,
     )
 
-if atualizar:
-    invalidar_cache_pacientes()
-
-carregamento_concluido = False
-if not integracao_habilitada():
-    st.warning(
-        "Integração com Xano desabilitada. Ela permanecerá bloqueada até a "
-        "verificação de segurança e autorização explícita."
-    )
-    pacientes = []
-else:
+if cadastrar:
     try:
-        with st.spinner("Carregando pacientes..."):
-            pacientes = listar_pacientes(os.getenv(XANO_PACIENTES_URL_ENV))
-        carregamento_concluido = True
-    except ConfiguracaoAusenteError as erro:
-        st.warning(str(erro))
-        pacientes = []
-    except ErroHttpError as erro:
-        st.error(f"Não foi possível carregar pacientes: {erro}")
-        pacientes = []
-    except ErroTransporteError as erro:
-        st.error(f"Não foi possível carregar pacientes: {erro}")
-        pacientes = []
-    except RespostaInvalidaError as erro:
-        st.error(f"A resposta de pacientes é inesperada: {erro}")
-        pacientes = []
-    except ListagemError as erro:
-        st.error(f"Não foi possível carregar pacientes: {erro}")
-        pacientes = []
+        database.create_patient(nome, telefone, email)
+        st.success("Paciente cadastrado.")
+        st.rerun()
+    except database.ValidationError as error:
+        st.error(str(error))
+    except database.DatabaseError as error:
+        st.error(f"Não foi possível salvar o paciente: {error}")
 
-if carregamento_concluido and not pacientes:
-    st.info("Nenhum paciente cadastrado.")
-
-st.dataframe(
-    {
-        "ID": [paciente["id"] for paciente in pacientes],
-        "Nome": [paciente["nome"] for paciente in pacientes],
-        "Telefone": [paciente["telefone"] for paciente in pacientes],
-        "E-mail": [paciente["email"] for paciente in pacientes],
-    },
-    hide_index=True,
-    use_container_width=True,
-    height=220,
-)
+st.divider()
+st.subheader("Pacientes cadastrados")
+pacientes = database.list_patients()
+if pacientes:
+    st.dataframe(pacientes, hide_index=True, use_container_width=True)
+else:
+    st.info("Nenhum paciente cadastrado neste banco SQLite local.")

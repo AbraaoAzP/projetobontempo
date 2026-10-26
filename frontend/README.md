@@ -17,49 +17,37 @@ Instale as dependências e inicie a aplicação:
 
 ```powershell
 python -m pip install -r frontend/requirements.txt
-python -m streamlit run frontend/app.py
+python -m streamlit run frontend/app.py --server.address 127.0.0.1 --server.port 8502
 ```
+
+O servidor fica limitado à máquina local e não escuta na rede.
 
 ## Configuração das listagens
 
-As URLs completas são fornecidas por configuração externa:
+O cliente HTTP somente GET existente continua disponível para uma integração futura,
+mas as páginas deste MVP usam exclusivamente o modo de demonstração SQLite. O modo
+local não lê as URLs de Xano e não faz requisições HTTP.
 
-- `XANO_PACIENTES_URL`
-- `XANO_PROFISSIONAIS_URL`
+O modo de demonstração é identificado na barra lateral. Os dados são salvos em
+`frontend/data/bontempo_demo.sqlite3`, arquivo ignorado pelo Git.
 
-As páginas leem essas configurações do ambiente do processo. Não coloque URLs
-operacionais, credenciais ou tokens no código versionado.
+Use o botão **Carregar exemplos fictícios** para inserir registros sintéticos.
+Essa ação só funciona quando as tabelas funcionais estão vazias; em bancos com
+dados, a operação é recusada e nenhum registro existente é substituído.
 
-As chamadas ao Xano ficam desabilitadas por padrão. Não basta configurar as
-URLs para ativá-las. A variável `XANO_LISTAGENS_ENABLED` deve permanecer ausente
-ou diferente de `true` até que o grupo confirme que os registros são
-exclusivamente fictícios, verifique que o acesso aos endpoints está
-adequadamente restrito e autorize explicitamente a habilitação. Esse sinalizador
-é somente uma trava operacional do frontend; não substitui controles de acesso
-no Xano nem comprova que eles existem.
+O cliente Xano permanece desabilitado por padrão. Não defina
+`XANO_LISTAGENS_ENABLED=true` para esta demonstração. Uma habilitação futura
+depende de revisão de segurança e autorização próprias; configurar URLs não
+ativa as páginas SQLite como consumidoras do Xano.
 
-Somente depois dessas verificações e autorização, a execução poderá receber
-`XANO_LISTAGENS_ENABLED=true` junto das duas URLs. Em PowerShell, configure
-valores aprovados para o ambiente antes de iniciar o Streamlit:
-
-```powershell
-$env:XANO_PACIENTES_URL = "<URL GET aprovada para pacientes>"
-$env:XANO_PROFISSIONAIS_URL = "<URL GET aprovada para profissionais>"
-$env:XANO_LISTAGENS_ENABLED = "true"
-python -m streamlit run frontend/app.py
-```
-
-Não use endpoints reais enquanto a verificação de segurança estiver pendente.
-
-Quando habilitada, cada listagem usa exclusivamente GET, tem timeout de cinco
-segundos e cache de até 60 segundos. O botão “Atualizar” solicita nova leitura
-e invalida apenas o cache da página correspondente. Cadastro e busca continuam
-desabilitados. Erros de configuração, HTTP, conexão, timeout ou formato são
-apresentados sem dados de fallback.
+Consultas usam `America/Sao_Paulo` como fuso da interface e persistem instantes
+em UTC. Agendamentos e confirmações ocupam horário; intervalos adjacentes são
+permitidos e consultas canceladas/realizadas/não comparecidas liberam o horário.
 
 ## Testes
 
-Execute os testes com transporte HTTP simulado, a partir da pasta `frontend`:
+Execute os testes locais SQLite e os testes do cliente HTTP com transporte
+simulado, a partir da pasta `frontend`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v

@@ -1,18 +1,6 @@
-import os
-
 import streamlit as st
 
-from services.listagens import (
-    ConfiguracaoAusenteError,
-    ErroHttpError,
-    ErroTransporteError,
-    ListagemError,
-    RespostaInvalidaError,
-    XANO_PROFISSIONAIS_URL_ENV,
-    integracao_habilitada,
-    invalidar_cache_profissionais,
-    listar_profissionais,
-)
+from services import database
 from ui import apply_styles, show_page_header
 
 
@@ -23,70 +11,87 @@ show_page_header(
     "🩺",
 )
 
-search_column, button_column = st.columns([3, 1])
-with search_column:
-    st.text_input(
-        "Buscar profissional",
-        placeholder="Busca disponível após a integração",
-        disabled=True,
+especialidades = database.list_specialties()
+especialidade_ids = [int(especialidade["id"]) for especialidade in especialidades]
+nomes_especialidades = {
+    int(especialidade["id"]): str(especialidade["nome"])
+    for especialidade in especialidades
+}
+
+with st.form("cadastro_profissional", clear_on_submit=True):
+    st.subheader("Cadastrar profissional")
+    st.caption("* Campos obrigatórios.")
+    nome = st.text_input(
+        "Nome *",
+        placeholder="Digite o nome completo",
+        label_visibility="visible",
     )
-with button_column:
-    st.write("")
-    st.button(
-        "Novo profissional",
+    telefone = st.text_input(
+        "Telefone *",
+        placeholder="Ex.: (11) 99999-9999",
+        label_visibility="visible",
+    )
+    email = st.text_input(
+        "Email",
+        placeholder="Ex.: exemplo@email.com",
+        help="Opcional.",
+        label_visibility="visible",
+    )
+    especialidades_selecionadas = st.multiselect(
+        "Especialidades",
+        options=especialidade_ids,
+        format_func=lambda specialty_id: nomes_especialidades[specialty_id],
+        placeholder="Selecione uma opção",
+        help="É permitido cadastrar o profissional sem especialidades durante a transição.",
+        label_visibility="visible",
+    )
+    cadastrar = st.form_submit_button(
+        "Cadastrar profissional",
+        type="primary",
         icon=":material/person_add:",
-        disabled=True,
-        use_container_width=True,
-    )
-    atualizar = st.button(
-        "Atualizar",
-        icon=":material/refresh:",
-        use_container_width=True,
     )
 
-if atualizar:
-    invalidar_cache_profissionais()
-
-carregamento_concluido = False
-if not integracao_habilitada():
-    st.warning(
-        "Integração com Xano desabilitada. Ela permanecerá bloqueada até a "
-        "verificação de segurança e autorização explícita."
-    )
-    profissionais = []
-else:
+if cadastrar:
     try:
-        with st.spinner("Carregando profissionais..."):
-            profissionais = listar_profissionais(os.getenv(XANO_PROFISSIONAIS_URL_ENV))
-        carregamento_concluido = True
-    except ConfiguracaoAusenteError as erro:
-        st.warning(str(erro))
-        profissionais = []
-    except ErroHttpError as erro:
-        st.error(f"Não foi possível carregar profissionais: {erro}")
-        profissionais = []
-    except ErroTransporteError as erro:
-        st.error(f"Não foi possível carregar profissionais: {erro}")
-        profissionais = []
-    except RespostaInvalidaError as erro:
-        st.error(f"A resposta de profissionais é inesperada: {erro}")
-        profissionais = []
-    except ListagemError as erro:
-        st.error(f"Não foi possível carregar profissionais: {erro}")
-        profissionais = []
+        database.create_professional(
+            nome,
+            telefone,
+            email,
+            especialidades_selecionadas,
+        )
+        st.success("Profissional cadastrado.")
+        st.rerun()
+    except database.ValidationError as error:
+        st.error(str(error))
+    except database.DatabaseError as error:
+        st.error(f"Não foi possível salvar o profissional: {error}")
 
-if carregamento_concluido and not profissionais:
-    st.info("Nenhum profissional cadastrado.")
-
-st.dataframe(
-    {
-        "ID": [profissional["id"] for profissional in profissionais],
-        "Nome": [profissional["nome"] for profissional in profissionais],
-        "Especialidade": [
-            profissional["especialidade"] for profissional in profissionais
-        ],
-    },
-    hide_index=True,
-    use_container_width=True,
-    height=220,
-)
+st.divider()
+st.subheader("Profissionais cadastrados")
+profissionais = database.list_professionals()
+if profissionais:
+    st.dataframe(profissionais, hide_index=True, use_container_width=True)
+    st.subheader("Gerenciar especialidades dos profissionais")
+    for profissional in profissionais:
+        professional_id = int(profissional["id"])
+        with st.expander(f"{profissional['nome']} · ID {professional_id}"):
+            with st.form(f"especialidades_profissional_{professional_id}"):
+                selected = st.multiselect(
+                    "Especialidades vinculadas",
+                    options=especialidade_ids,
+                    default=database.list_professional_specialties(professional_id),
+                    format_func=lambda specialty_id: nomes_especialidades[specialty_id],
+                    placeholder="Selecione uma opção",
+                    key=f"vinculos_{professional_id}",
+                    label_visibility="visible",
+                )
+                salvar = st.form_submit_button("Salvar vínculos")
+            if salvar:
+                try:
+                    database.set_professional_specialties(professional_id, selected)
+                    st.success("Vínculos atualizados.")
+                    st.rerun()
+                except database.DatabaseError as error:
+                    st.error(str(error))
+else:
+    st.info("Nenhum profissional cadastrado neste banco SQLite local.")
