@@ -1,6 +1,6 @@
 ## Context
 
-Consulte [proposal.md](./proposal.md) para a motivação e o escopo. A entrega inicial no HEAD é uma aplicação Streamlit multipágina com um módulo visual compartilhado; Pacientes e Profissionais apresentam tabelas vazias e controles desabilitados, sem chamadas HTTP. A implementação desta Change, presente no worktree, acrescenta as listagens GET com chamadas desabilitadas por padrão. As APIs de listagem foram testadas pelo grupo no ambiente local, e os arquivos XanoScript versionados definem as mesmas rotas de coleção e projeções de campos, mas não comprovam toda a configuração publicada nem a segurança do ambiente.
+Consulte [proposal.md](./proposal.md) para a motivação e o escopo. Esta Change acrescentou listagens GET à aplicação Streamlit multipágina. A Change `crud-pacientes-profissionais-xano-streamlit` posteriormente substituiu a experiência dessas duas páginas por operações CRUD através do cliente Xano. As decisões GET-only abaixo descrevem a fase inicial e não restringem a Change CRUD. Os arquivos XanoScript e as respostas de leitura não comprovam, por si sós, que a segurança do ambiente esteja adequada.
 
 A Change `revisar-escopo-modelo-clinica` está ativa. Ela não é dependência desta integração: seu escopo de revisão não altera as listagens existentes, e esta Change não altera seus artefatos nem antecipa relacionamentos de especialidade, consultas ou prontuários.
 
@@ -20,15 +20,15 @@ A Change `revisar-escopo-modelo-clinica` está ativa. Ela não é dependência d
 
 ## Decisions
 
-### Centralizar o cliente HTTP e usar apenas as duas URLs de coleção
+### Centralizar o cliente HTTP para a fase inicial de listagem
 
-Criar um módulo sob `frontend/services/` que receba/configure a URL completa de cada listagem, aplique timeout, execute GET, verifique status e valide que a resposta é uma lista de objetos com os campos esperados. A interface apresenta erros tipados de configuração, transporte, HTTP e formato sem sucesso aparente.
+Na fase inicial, criar um módulo sob `frontend/services/` que receba/configure a URL completa de cada listagem, aplique timeout, execute GET, verifique status e valide que a resposta é uma lista de objetos com os campos esperados. A Change CRUD posterior define o cliente e as rotas usados pelas operações atuais das páginas.
 
-Alternativa considerada: duplicar chamadas e parsing nas páginas. Foi rejeitada por duplicar tratamento de falhas e dificultar testes e futuras operações. A abstração continua limitada às leituras necessárias; não oferecerá métodos POST/PATCH/PUT/DELETE.
+Alternativa considerada: duplicar chamadas e parsing nas páginas. Foi rejeitada por duplicar tratamento de falhas e dificultar testes. A limitação a GET pertence somente a esta fase inicial; não limita as operações definidas pela Change CRUD.
 
-### Usar variáveis de ambiente e não guardar URLs nem credenciais no código
+### Usar configuração externa para a camada GET inicial
 
-Usar `XANO_PACIENTES_URL` e `XANO_PROFISSIONAIS_URL` como configuração externa de URLs completas. Se uma variável faltar, a página informa a configuração pendente e não tenta uma URL padrão. Não adicionar token ou credencial; qualquer requisito de acesso descoberto interrompe a habilitação até revisão de segurança.
+O cliente GET desta etapa usa `XANO_PACIENTES_URL` e `XANO_PROFISSIONAIS_URL` para URLs completas. Essa configuração pertence à implementação GET inicial; a Change CRUD especifica as variáveis e a habilitação usadas atualmente pelas páginas. Não adicionar token ou credencial; qualquer requisito de acesso descoberto interrompe a habilitação até revisão de segurança.
 
 Alternativa considerada: fixar a base/rotas do Xano no módulo ou incluir `.env` com valores reais. Foi rejeitada porque dificulta ambientes distintos e pode versionar configuração de execução. Um exemplo versionado, se necessário, deverá manter os valores vazios e ser explicitamente ilustrativo.
 
@@ -38,9 +38,9 @@ Adicionar `requests` ao manifesto se a implementação importar essa biblioteca 
 
 Alternativa considerada: usar `urllib` da biblioteca padrão para evitar dependência. `requests` foi preferido pela ergonomia de status/JSON e pela compatibilidade com simulação de transporte nos testes; a dependência deverá ser direta, não presumida por dependência transitiva do Streamlit.
 
-### Cachear cada listagem por até 60 segundos e oferecer atualização explícita
+### Cachear as listagens da fase inicial
 
-Aplicar cache de dados limitado a 60 segundos por listagem para evitar repetir GET em cada rerun do Streamlit. Um controle pequeno de atualização invalida somente o cache da página correspondente e solicita nova leitura; erros não são convertidos em lista vazia. A mensagem de atualização permanece coerente com o resultado efetivamente recebido.
+Na implementação GET inicial, cachear cada listagem por até 60 segundos e oferecer atualização explícita. Essa decisão descreve o serviço GET original; o comportamento das páginas após a integração CRUD é definido pela Change `crud-pacientes-profissionais-xano-streamlit`.
 
 Alternativa considerada: consultar em todo rerun ou cache sem ação de atualização. A primeira opção gera tráfego desnecessário; a segunda não atende à necessidade de atualizar uma lista antes da expiração.
 
@@ -50,9 +50,9 @@ Usar `unittest` e mocks de transporte para respostas válidas com dados sintéti
 
 Alternativa considerada: testes de integração contra o Xano. Foram rejeitados para esta Change por dependerem de rede/dados externos e pelo requisito de comprovar que os registros são fictícios e o ambiente está adequadamente restrito antes de expor qualquer resposta.
 
-### Manter a integração desabilitada por padrão
+### Manter a integração GET inicial desabilitada por padrão
 
-As funções de listagem SHALL recusar chamadas enquanto `XANO_LISTAGENS_ENABLED` não estiver explicitamente definido como `true`. URLs configuradas, por si só, não habilitam chamadas. O sinalizador é uma trava operacional de frontend, não um controle de acesso nem evidência de que o Xano está seguro. Antes de definir o sinalizador no ambiente de demonstração, confirmar e registrar que os registros são exclusivamente fictícios, verificar que o acesso ao ambiente e aos endpoints está adequadamente restrito e obter autorização explícita do grupo. Enquanto qualquer confirmação estiver pendente, manter o sinalizador ausente ou falso. Esta Change não altera as configurações de segurança do Xano.
+As funções de listagem desta fase recusam chamadas enquanto `XANO_LISTAGENS_ENABLED` não estiver explicitamente definido como `true`. Esse sinalizador é uma trava operacional de frontend, não um controle de acesso nem evidência de que o Xano está seguro. A integração CRUD posterior tem configuração própria e não altera permissões ou credenciais do Xano. A tarefa de segurança 1.2 permanece pendente: não considerar a existência de GET bem-sucedido evidência de que os registros são fictícios ou de que o acesso está adequadamente restrito.
 
 Alternativa considerada: habilitar chamadas automaticamente quando as URLs estiverem presentes. Foi rejeitada porque a natureza dos dados foi confirmada como teste, mas a restrição de acesso aos endpoints ainda não foi verificada.
 
@@ -66,4 +66,4 @@ Alternativa considerada: habilitar chamadas automaticamente quando as URLs estiv
 
 ## Migration Plan
 
-Não há migração de Xano. Nesta aplicação: (1) manter chamadas reais desabilitadas por padrão; (2) adicionar o cliente GET e sua dependência; (3) obter as duas URLs externamente sem habilitar chamadas; (4) exibir o aviso de integração desabilitada até haver autorização; (5) executar testes simulados e verificar a interface sem dados pessoais reais. Futuramente, somente após verificar e registrar segurança e obter autorização explícita, definir as URLs e `XANO_LISTAGENS_ENABLED=true` no ambiente. Rollback consiste em remover essa variável ou defini-la como falsa, mantendo o Xano intocado.
+Não há migração de Xano nesta etapa. O cliente e os testes GET registram a primeira fase de integração; a Change CRUD posterior define o comportamento integrado atual de Pacientes e Profissionais. A verificação de segurança continua pendente conforme a tarefa 1.2. Nenhuma destas Changes autoriza alterar dados, tabelas, endpoints, permissões ou credenciais remotas.

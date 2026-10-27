@@ -10,14 +10,14 @@
 - [x] 2.2 Tratar configuração ausente, integração desabilitada, erro HTTP, timeout, falha de conexão, JSON inválido e estrutura inesperada com erros explícitos; verificar que nenhum caso de falha retorna lista vazia ou registros fictícios como fallback.
 - [x] 2.3 Criar testes automatizados com transporte simulado para sucesso com registros sintéticos, lista vazia, erro HTTP, timeout, falha de conexão, JSON inválido e estrutura incompatível; verificar que a suíte não faz chamadas de rede nem utiliza dados pessoais ou clínicos reais.
 
-## 3. Exibição das listagens Streamlit
+## 3. Exibição das listagens Streamlit (fase GET inicial)
 
-- [x] 3.1 Atualizar `frontend/pages/1_Pacientes.py` para usar o cliente compartilhado, manter layout/colunas e controles de busca e criação desabilitados, e apresentar estados de carregamento, erro e lista vazia; verificar que dados exibidos correspondem somente aos campos retornados.
-- [x] 3.2 Atualizar `frontend/pages/2_Profissionais.py` para usar o mesmo cliente e manter `especialidade` textual; verificar estados de lista vazia e erro e que não se cria catálogo ou relacionamento.
+- [x] 3.1 Na fase GET inicial, atualizar `frontend/pages/1_Pacientes.py` para usar o cliente compartilhado, manter layout/colunas e controles de busca e criação desabilitados, e apresentar estados de carregamento, erro e lista vazia; a Change CRUD posterior substitui o estado final desses controles.
+- [x] 3.2 Na fase GET inicial, atualizar `frontend/pages/2_Profissionais.py` para usar o mesmo cliente e manter `especialidade` textual; verificar estados de lista vazia e erro e que não se cria catálogo ou relacionamento. A Change CRUD posterior habilita as operações previstas para Profissionais.
 - [x] 3.3 Reutilizar resultados por até 60 segundos e oferecer atualização explícita por módulo; verificar que reruns dentro do prazo não repetem GET sem necessidade e que atualizar invalida apenas o cache correspondente.
 - [x] 3.4 Atualizar `frontend/README.md` com a configuração externa, execução, atualização/cache e mensagens de erro; verificar que instruções não incluem segredos nem valores de URL operacional.
 
 ## 4. Verificação final da integração
 
-- [x] 4.1 Executar testes automatizados e smoke test local das três páginas com APIs simuladas ou configuração ausente; verificar navegação, identidade visual, colunas e ausência de operações POST, PATCH, PUT ou DELETE.
+- [x] 4.1 Executar testes automatizados e smoke test local das três páginas com APIs simuladas ou configuração ausente; verificar navegação, identidade visual, colunas e ausência de escritas remotas nesta fase GET. Os fluxos de escrita simulados e a interface CRUD são cobertos pela Change posterior.
 - [x] 4.2 Revisar `git diff` e `git status`; verificar que a implementação se limita ao frontend, testes, documentação e artefatos desta Change, sem alterar Xano, dados ou a Change `revisar-escopo-modelo-clinica`.

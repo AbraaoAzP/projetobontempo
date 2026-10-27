@@ -1,8 +1,8 @@
 ## MODIFIED Requirements
 
-### Requirement: Manter a primeira entrega sem integração HTTP
+### Requirement: Preservar navegação e estados da integração
 
-A entrega inicial sem HTTP é o comportamento-base anterior a esta Change; esta Change acrescenta somente as listagens GET posteriores. A navegação entre Início, Pacientes e Profissionais SHALL permanecer disponível independentemente da disponibilidade do Xano. As chamadas reais SHALL permanecer desabilitadas por padrão. Quando a URL de uma listagem não estiver configurada, ou quando a integração não estiver explicitamente habilitada, a interface SHALL apresentar o estado apropriado sem fazer a requisição correspondente. Somente depois de configurada e explicitamente habilitada, as páginas poderão realizar seus GETs de listagem conforme esta Change.
+Esta Change especifica a fase inicial de listagem GET; a Change `crud-pacientes-profissionais-xano-streamlit` especifica a evolução para CRUD de Pacientes e Profissionais. A navegação SHALL permanecer disponível independentemente da disponibilidade do Xano. Quando a configuração ou habilitação exigida para uma operação estiver ausente, a interface SHALL apresentar o estado apropriado sem enviar a requisição correspondente. Esta requirement não restringe as operações CRUD especificadas pela Change posterior.
 
 #### Scenario: Acessar as páginas sem integração com o Xano
 
@@ -28,9 +28,9 @@ As páginas Pacientes e Profissionais SHALL manter seus títulos, descrições e
 - **WHEN** uma pessoa consulta a navegação durante esta Change
 - **THEN** Especialidades, Consultas e Prontuários não são adicionados ou apresentados como funcionalidades implementadas
 
-### Requirement: Preservar o escopo funcional da interface
+### Requirement: Preservar o escopo dos módulos durante a evolução
 
-A interface SHALL manter somente as páginas Início, Pacientes e Profissionais, não exigir login nem apresentar dados fictícios de pacientes ou profissionais. Esta Change SHALL permitir somente requisições HTTP GET para as duas listagens confirmadas e SHALL NOT habilitar cadastro, edição, exclusão, operações de escrita, agendamentos, disponibilidades ou acesso a dados clínicos.
+A fase inicial desta Change limita-se às listagens GET de Pacientes e Profissionais. A Change `crud-pacientes-profissionais-xano-streamlit` define cadastro, edição e exclusão nesses módulos. A aplicação SHALL preservar as demais páginas existentes sem ampliar seu escopo, não exigir login como parte destas Changes e não apresentar dados fictícios como se fossem registros reais. Agendamentos, disponibilidades, prontuários e outras operações clínicas continuam fora do escopo.
 
 #### Scenario: Acessar as páginas sem autenticação ou integração
 
@@ -40,21 +40,16 @@ A interface SHALL manter somente as páginas Início, Pacientes e Profissionais,
 #### Scenario: Conferir o escopo das páginas
 
 - **WHEN** a pessoa utiliza a navegação da aplicação
-- **THEN** somente Início, Pacientes e Profissionais estão disponíveis; as páginas de módulo podem listar dados reais via GET, mas não oferecem operações de cadastro, edição, exclusão, agendamento ou disponibilidade
+- **THEN** as páginas existentes permanecem disponíveis; Pacientes e Profissionais oferecem somente as operações especificadas pela Change CRUD, sem habilitar agendamentos, disponibilidades ou acesso clínico não especificado
 
-### Requirement: Apresentar estrutura vazia do módulo Pacientes
+### Requirement: Apresentar a listagem do módulo Pacientes
 
-A página Pacientes SHALL manter cabeçalho, descrição, busca desabilitada e botão “Novo paciente” desabilitado, e apresentar os campos ID, Nome, Telefone e E-mail em tabela. Com integração configurada, a tabela SHALL exibir somente registros recebidos do GET de listagem; se a resposta for uma lista vazia, SHALL apresentar uma mensagem apropriada de nenhum paciente cadastrado. A página SHALL NOT simular registros.
+A fase GET desta Change define a apresentação da listagem de Pacientes com os campos ID, Nome, Telefone e E-mail, exibindo somente registros recebidos do Xano e uma mensagem apropriada para lista vazia. Cadastro, consulta individual, edição e exclusão são definidos pela Change CRUD posterior. A página SHALL NOT simular registros.
 
 #### Scenario: Abrir Pacientes sem integração
 
 - **WHEN** a pessoa abre Pacientes sem integração com o Xano
 - **THEN** vê o cabeçalho, os controles desabilitados, a estrutura de tabela com as colunas especificadas e uma indicação de configuração ausente ou de falha, sem registros inventados
-
-#### Scenario: Tentar usar controles do módulo Pacientes
-
-- **WHEN** a pessoa visualiza o campo de busca e o botão “Novo paciente”
-- **THEN** ambos estão desabilitados e não iniciam busca, cadastro ou qualquer operação persistida
 
 #### Scenario: Listar pacientes existentes
 
@@ -66,19 +61,14 @@ A página Pacientes SHALL manter cabeçalho, descrição, busca desabilitada e b
 - **WHEN** o GET de pacientes retorna uma coleção JSON vazia
 - **THEN** a tabela não apresenta linhas fictícias e a página informa que não há pacientes cadastrados
 
-### Requirement: Apresentar estrutura vazia do módulo Profissionais
+### Requirement: Apresentar a listagem do módulo Profissionais
 
-A página Profissionais SHALL manter cabeçalho, descrição, busca desabilitada e botão “Novo profissional” desabilitado, e apresentar os campos ID, Nome e Especialidade em tabela. Com integração configurada, a tabela SHALL exibir somente registros recebidos do GET de listagem; `especialidade` SHALL permanecer o campo textual retornado pelo endpoint, sem exigir catálogo ou relação. Se a resposta for uma lista vazia, SHALL apresentar uma mensagem apropriada de nenhum profissional cadastrado. A página SHALL NOT simular registros.
+A fase GET desta Change define a apresentação da listagem de Profissionais com os campos ID, Nome e Especialidade, exibindo somente registros recebidos do Xano e uma mensagem apropriada para lista vazia. `especialidade` SHALL permanecer textual, sem exigir catálogo ou relação. Cadastro, consulta individual, edição e exclusão são definidos pela Change CRUD posterior. A página SHALL NOT simular registros.
 
 #### Scenario: Abrir Profissionais sem integração
 
 - **WHEN** a pessoa abre Profissionais sem integração com o Xano
 - **THEN** vê o cabeçalho, os controles desabilitados, a estrutura de tabela com as colunas especificadas e uma indicação de configuração ausente ou de falha, sem registros inventados
-
-#### Scenario: Tentar usar controles do módulo Profissionais
-
-- **WHEN** a pessoa visualiza o campo de busca e o botão “Novo profissional”
-- **THEN** ambos estão desabilitados e não iniciam busca, cadastro ou qualquer operação persistida
 
 #### Scenario: Listar profissionais existentes
 
@@ -90,14 +80,14 @@ A página Profissionais SHALL manter cabeçalho, descrição, busca desabilitada
 - **WHEN** o GET de profissionais retorna uma coleção JSON vazia
 - **THEN** a tabela não apresenta linhas fictícias e a página informa que não há profissionais cadastrados
 
-### Requirement: Preservar limites funcionais e arquiteturais
+### Requirement: Preservar limites de segurança e arquitetura
 
-A interface SHALL NOT implementar login ou gerenciamento de usuários, dados fictícios, CRUD, agendamentos, disponibilidades, novas páginas ou dependências de acesso direto ao banco. Nenhuma tabela, endpoint ou configuração de segurança do Xano SHALL ser alterada por esta Change. As leituras SHALL ocorrer exclusivamente por APIs HTTP GET confirmadas; nenhuma credencial ou segredo SHALL ser armazenado no código versionado.
+A interface SHALL NOT implementar login, gerenciamento de usuários, agendamentos, disponibilidades ou acesso direto ao banco. Nenhuma tabela, endpoint ou configuração de segurança do Xano SHALL ser alterada por estas Changes. As operações de Pacientes e Profissionais SHALL usar APIs HTTP confirmadas; nenhuma credencial ou segredo SHALL ser armazenado no código versionado. A segurança dos dados e do acesso remoto continua sujeita à tarefa pendente 1.2 desta Change.
 
 #### Scenario: Verificar ausência de integrações e operações
 
 - **WHEN** a pessoa navega pelas três páginas
-- **THEN** a aplicação não exige autenticação, não exibe registros inventados e não oferece operações habilitadas de busca ou gravação; somente as listagens GET previstas podem consultar o Xano
+- **THEN** a aplicação não exige autenticação, não exibe registros inventados e usa somente as operações Xano especificadas para Pacientes e Profissionais, sem alterar permissões ou credenciais remotas
 
 ## ADDED Requirements
 
