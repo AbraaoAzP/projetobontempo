@@ -50,7 +50,15 @@ class XanoHTTPError(XanoError):
 
     def __init__(self, status_code: int) -> None:
         self.status_code = status_code
-        super().__init__(f"O Xano respondeu com erro HTTP {status_code}.")
+        if status_code == 429:
+            message = (
+                "O Xano limitou temporariamente a requisição (HTTP 429). "
+                "Nenhuma nova tentativa foi enviada; consulte a listagem antes "
+                "de repetir para evitar duplicidade."
+            )
+        else:
+            message = f"O Xano respondeu com erro HTTP {status_code}."
+        super().__init__(message)
 
 
 class XanoTimeoutError(XanoError):

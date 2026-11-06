@@ -118,6 +118,22 @@ class CrudPageTests:
         create.assert_not_called()
         self.assertTrue(any("email válido" in item.value for item in page.error))
 
+    def test_invalid_phone_format_is_not_sent(self) -> None:
+        with self._environment(), patch.object(
+            XanoClient, "list_records", return_value=[]
+        ), patch.object(XanoClient, "create_record") as create:
+            page = self._run_page()
+            page.text_input(key=f"{self.prefix}_create_name").set_value("Nome")
+            page.text_input(key=f"{self.prefix}_create_phone").set_value("123-ABC")
+            page.button(
+                key=f"FormSubmitter:create_{self.prefix}-Cadastrar "
+                + ("paciente" if self.resource == "pacientes" else "profissional")
+            ).click()
+            page.run()
+
+        create.assert_not_called()
+        self.assertTrue(any("telefone" in item.value.lower() for item in page.error))
+
     def test_load_and_edit_use_item_and_patch_endpoints(self) -> None:
         with self._environment(), patch.object(
             XanoClient, "list_records", return_value=[self.record]
@@ -201,6 +217,44 @@ class CrudPageTests:
         self.assertTrue(any("HTTP 500" in item.value for item in page.error))
         self.assertFalse(
             any("Nenhum" in item.value for item in page.info)
+        )
+        self.assertEqual(len(page.exception), 0)
+
+    def test_create_rate_limit_is_reported_without_retry(self) -> None:
+        with self._environment(), patch.object(
+            XanoClient, "list_records", return_value=[]
+        ), patch.object(
+            XanoClient,
+            "create_record",
+            side_effect=XanoHTTPError(429),
+        ) as create:
+            page = self._run_page()
+            page.text_input(key=f"{self.prefix}_create_name").set_value("Nome")
+            page.text_input(key=f"{self.prefix}_create_phone").set_value(
+                "11999999999"
+            )
+            page.button(
+                key=f"FormSubmitter:create_{self.prefix}-Cadastrar "
+                + ("paciente" if self.resource == "pacientes" else "profissional")
+            ).click()
+            page.run()
+
+        create.assert_called_once_with(
+            self.resource,
+            {
+                "nome": "Nome",
+                "telefone": "11999999999",
+                "email": None,
+                **(
+                    {"especialidade": None}
+                    if self.resource == "profissionais"
+                    else {}
+                ),
+            },
+        )
+        self.assertTrue(any("HTTP 429" in item.value for item in page.error))
+        self.assertTrue(
+            any("consulte a listagem" in item.value for item in page.error)
         )
         self.assertEqual(len(page.exception), 0)
 

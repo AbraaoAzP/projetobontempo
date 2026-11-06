@@ -184,7 +184,7 @@ class TestXanoClient(unittest.TestCase):
                     self.client.delete_record("pacientes", 11)
 
     def test_http_errors_preserve_status_without_exposing_response_body(self) -> None:
-        for status_code in (400, 401, 403, 404, 409, 500):
+        for status_code in (400, 401, 403, 404, 409, 429, 500):
             with self.subTest(status_code=status_code):
                 self.transport.request.return_value = self._response(
                     {"private": "do not expose"}, status_code
@@ -193,6 +193,21 @@ class TestXanoClient(unittest.TestCase):
                     self.client.list_records("pacientes")
                 self.assertEqual(raised.exception.status_code, status_code)
                 self.assertNotIn("private", str(raised.exception))
+
+    def test_rate_limit_is_not_retried_automatically(self) -> None:
+        self.transport.request.return_value = self._response(
+            {"error": "rate limited"}, 429
+        )
+
+        with self.assertRaises(XanoHTTPError) as raised:
+            self.client.create_record(
+                "profissionais", {"nome": "Profissional sintético"}
+            )
+
+        self.transport.request.assert_called_once()
+        self.assertIn("HTTP 429", str(raised.exception))
+        self.assertIn("consulte a listagem", str(raised.exception))
+        self.assertNotIn("rate limited", str(raised.exception))
 
     def test_transport_failures_are_explicit(self) -> None:
         cases = (

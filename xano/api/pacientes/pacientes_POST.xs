@@ -18,6 +18,11 @@ query pacientes verb=POST {
       input = {telefone: $input.telefone}
     } as $telefone_validado
 
+    precondition ($telefone_validado == true) {
+      error_type = "inputerror"
+      error = "Telefone inválido."
+    }
+
     db.add paciente {
       data = {
         nome: $input.nome

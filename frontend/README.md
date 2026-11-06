@@ -48,11 +48,16 @@ Por segurança, todas as chamadas de ambas as páginas ficam desabilitadas até
 consulta o SQLite como alternativa. Erros HTTP, de rede, de configuração ou
 respostas incompatíveis são exibidos sem serem convertidos em sucesso ou lista
 vazia. Campos textuais são validados e normalizados antes do envio; email é
-opcional e validado quando informado.
+opcional e validado quando informado. O telefone obrigatório aceita somente
+números, espaços, parênteses, hífens e um `+` inicial, com 8 a 15 dígitos.
+Respostas HTTP 429 são apresentadas sem repetição automática; confira a
+listagem antes de tentar novamente para reduzir o risco de cadastro duplicado.
 
-O endpoint remoto de criação de Pacientes chama `validar_telefone_paciente`,
-que retorna `{valid: boolean}`, mas não verifica o resultado antes de gravar.
-Essa inconsistência permanece pendente e não foi alterada nesta implementação.
+O XanoScript local de Pacientes e Profissionais chama
+`validar_telefone_paciente`, que interrompe entradas inválidas e retorna o
+booleano `true` para as válidas. Os endpoints locais agora verificam
+explicitamente esse retorno. Essa correção ainda precisa ser publicada e
+validada no ambiente Xano; nenhum endpoint remoto foi alterado nesta etapa.
 
 Os testes automatizados substituem o cliente por mocks ou usam transporte
 simulado; nenhuma requisição real ao Xano é feita pela suíte.
