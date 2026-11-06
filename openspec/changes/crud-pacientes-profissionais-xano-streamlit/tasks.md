@@ -31,11 +31,32 @@
 ## 5. Verificação remota autorizada
 
 - [x] 5.1 Validar somente leitura das coleções de Pacientes e Profissionais pelas APIs reais, confirmar status HTTP, resposta em lista compatível com o cliente e carregamento das páginas Streamlit sem erros; registrar apenas metadados e quantidade, sem expor dados pessoais nem executar operações de escrita.
-- [ ] 5.2 Após autorização específica, validar o CRUD remoto com registros sintéticos criados para o teste; verificar listagem, leitura, criação e edição sem alterar registros preexistentes. Validação parcial em 2026-10-27: Pacientes ID 19 passou POST/GET/PATCH e confirmação por GET (HTTP 200); Profissionais POST respondeu HTTP 429, sem ID confirmado, então a sequência foi interrompida e não repetida. Nesta etapa não foi feita nova escrita; o 429 não permite concluir se houve persistência.
-- [ ] 5.3 Testar DELETE somente com o identificador retornado pela criação sintética do próprio teste; verificar que nenhum registro preexistente foi removido.
+- [ ] 5.2 Após autorização específica, validar o CRUD remoto com registros sintéticos criados para o teste; verificar listagem, leitura, criação e edição sem alterar registros preexistentes. Validação parcial em 2026-10-27: Pacientes ID 19 passou POST/GET/PATCH e confirmação por GET (HTTP 200); Profissionais POST respondeu HTTP 429, sem ID confirmado, então a sequência foi interrompida e não repetida. Nesta etapa não foi feita nova escrita; o 429 não permite concluir se houve persistência. Evidência manual relatada pelo usuário em 2026-11-06: CREATE, READ/listagem, UPDATE e DELETE de Pacientes e Profissionais aprovados na aplicação com Xano habilitado. O relato não confirma que os registros eram sintéticos nem que registros preexistentes foram preservados; portanto, não comprova todos os critérios desta tarefa.
+- [ ] 5.3 Testar DELETE somente com o identificador retornado pela criação sintética do próprio teste; verificar que nenhum registro preexistente foi removido. O relato manual do usuário em 2026-11-06 informa DELETE aprovado para ambos os módulos, mas não confirma a origem dos IDs nem que nenhum registro preexistente foi removido; tarefa permanece pendente.
 - [x] 5.4 Os endpoints CRUD necessários foram informados como existentes no Xano; nenhuma publicação foi necessária ou executada. Se a verificação posterior identificar endpoint ausente, interromper até autorização explícita e mecanismo seletivo compatível com `allow_push: false`, sem publicação ampla.
 
 ## 6. Remoção final da persistência legada
 
 - [ ] 6.1 Após a migração e validação de Especialidades e Consultas em Changes próprias, remover inicialização, serviço e dependências SQLite; verificar que todas as páginas usam exclusivamente APIs HTTP do Xano e que a suíte não depende de SQLite.
 - [ ] 6.2 Manter o arquivo de banco SQLite preexistente intacto até decisão explícita sobre retenção ou migração e verificar que a remoção de código não o apaga.
+
+## Evidências manuais relatadas pelo usuário
+
+Em 2026-11-06, o usuário informou que executou manualmente os testes na aplicação Streamlit, com a integração Xano habilitada, com os seguintes resultados:
+
+| Módulo | CREATE | READ/listagem | UPDATE | DELETE |
+|---|---|---|---|---|
+| Pacientes | Aprovado | Aprovado | Aprovado | Aprovado |
+| Profissionais | Aprovado | Aprovado | Aprovado | Aprovado |
+
+O usuário também informou que o HTTP 429 observado anteriormente não impediu o cadastro nesta execução. Estes resultados são evidências relatadas pelo usuário, não testes automatizados nem uma execução ou verificação independente nesta etapa. Não foram incluídos IDs, dados pessoais, credenciais ou detalhes de registros.
+
+O relato não comprova que os arquivos XanoScript locais foram publicados, que a implementação publicada corresponde a esses arquivos ou que controles de segurança e autenticação foram verificados.
+
+## Pendências e limites da evidência
+
+- **Segurança e autorização:** inventariar e confirmar as permissões e proteções dos endpoints no backend. Os testes CRUD relatados não demonstram autorização adequada nem acesso restrito.
+- **Autenticação:** confirmar o mecanismo de autenticação exigido e a autorização aplicável aos endpoints; isso também permanece pendente na Change `implementar-autenticacao-perfis-admin-medico`.
+- **Publicação XanoScript:** não houve publicação nesta etapa. A validação local de sintaxe registrada em 2.5 não comprova publicação ou estado equivalente no Xano live; a publicação continua bloqueada conforme 1.4.
+- **Validações remotas adicionais:** confirmar que os testes usaram registros sintéticos criados para esse fim, que as leituras e alterações não afetaram registros preexistentes e que os DELETE usaram exclusivamente IDs dessas criações; concluir o inventário e a comparação remotos das tarefas 1.1–1.3.
+- **Migração legada:** as tarefas 6.1–6.2 dependem da migração de Especialidades e Consultas em Changes próprias e da decisão explícita sobre retenção do arquivo SQLite.
