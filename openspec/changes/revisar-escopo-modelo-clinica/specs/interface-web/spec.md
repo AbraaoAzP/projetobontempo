@@ -56,24 +56,41 @@ As páginas Pacientes, Profissionais, Especialidades, Consultas e Prontuários S
 
 ### Requirement: Preservar o escopo funcional da interface
 
-A interface SHALL oferecer Início como página de apresentação e navegação para Pacientes, Profissionais (médicos), Especialidades médicas, Consultas e Prontuários. O sistema SHALL NOT exigir login nem oferecer gerenciamento de usuários ou papéis nesta versão.
+O sistema SHALL oferecer login para os perfis Admin e Médico e apresentar Início e os cinco módulos funcionais: Pacientes, Profissionais (médicos), Especialidades médicas, Consultas e Prontuários. A navegação e os controles SHALL refletir o perfil autenticado, mas não substituir autorização no backend.
 
-Esta Change SHALL limitar-se à revisão de escopo e modelo: não SHALL implementar integração HTTP com Xano, operações clínicas, CRUD, autenticação ou acesso a dados de prontuário. A interface SHALL NOT apresentar dados fictícios de pacientes ou profissionais. A integração GET posterior é delimitada por Change própria, exige habilitação externa explícita e permanece sujeita à confirmação de segurança; chamadas usam APIs HTTP confirmadas, sem acesso direto do frontend ao banco de dados.
+Admin SHALL ter acesso aos módulos e operações administrativas aprovados, incluindo os CRUDs e dashboard descritos nesta Change. Médico SHALL ter acesso à própria agenda diária, aos dados necessários ao atendimento e à criação de registro de prontuário somente de paciente efetivamente atendido por ele; funções administrativas SHALL ser negadas.
+
+Esta Change SHALL limitar-se à revisão de escopo e modelo: não SHALL implementar telas, integração HTTP, CRUD, autenticação ou acesso a dados. A interface final usará APIs HTTP do Xano, nunca acesso direto ao banco. Não SHALL apresentar dados fictícios como se fossem registros reais; ambientes de demonstração SHALL usar exclusivamente dados fictícios.
 
 #### Scenario: Acessar as páginas sem autenticação ou integração
 
-- **WHEN** uma pessoa navega pela primeira entrega sem login, URL base configurada ou APIs do Xano disponíveis
-- **THEN** Início, Pacientes e Profissionais permanecem acessíveis sem chamadas HTTP ao Xano
+- **WHEN** a pessoa inicia a versão atualmente implementada antes da entrega futura de autenticação e navega sem configuração ou disponibilidade do Xano
+- **THEN** as páginas existentes permanecem acessíveis sem chamadas HTTP ao Xano, preservando o comportamento da entrega atual
 
 #### Scenario: Conferir o escopo das páginas
 
-- **WHEN** a Change de revisão de escopo é aplicada
-- **THEN** ela altera somente especificações e não habilita login, CRUD, consultas clínicas, agendamentos, disponibilidades, dados fictícios ou acesso a prontuários
+- **WHEN** o escopo da interface final é revisado
+- **THEN** identifica Início, Pacientes, Profissionais, Especialidades, Consultas e Prontuários, sem oferecer função não implementada como concluída
+
+#### Scenario: Exigir autenticação para módulos protegidos
+
+- **WHEN** uma pessoa tenta abrir um módulo protegido sem sessão autenticada
+- **THEN** a interface solicita autenticação e o backend não retorna dados protegidos
+
+#### Scenario: Apresentar módulos conforme o perfil
+
+- **WHEN** Admin ou Médico navega após autenticação
+- **THEN** a interface apresenta apenas as funções pertinentes ao perfil, sem considerar ocultação visual como autorização
 
 #### Scenario: Manter os limites arquiteturais
 
 - **WHEN** uma implementação futura integra o frontend ao backend
 - **THEN** o frontend usa somente APIs HTTP confirmadas e não acessa diretamente o banco de dados
+
+#### Scenario: Não simular registros reais
+
+- **WHEN** a aplicação é executada em ambiente de demonstração
+- **THEN** os registros apresentados são exclusivamente fictícios e não são confundidos com dados reais de pacientes
 
 ## ADDED Requirements
 
@@ -90,3 +107,24 @@ A página Início SHALL apresentar a função institucional e permitir alcançar
 
 - **WHEN** a página Início lista os módulos funcionais
 - **THEN** apresenta Pacientes, Profissionais, Especialidades, Consultas e Prontuários, mantendo Início como apresentação e sem adicionar Agenda como módulo autônomo
+
+### Requirement: Exibir dashboards de acordo com o perfil
+
+O dashboard de Admin SHALL apresentar as quantidades de pacientes e médicos cadastrados, consultas agendadas, consultas do dia, consultas realizadas e não realizadas. O dashboard de Médico SHALL apresentar somente as consultas próprias do dia, horários e quantidade, além dos dados de paciente necessários aos atendimentos autorizados.
+
+Os dados SHALL ser obtidos por APIs do Xano e as restrições de escopo SHALL ser impostas no backend. A definição do período e dos status usados nos indicadores permanece pendente de decisão.
+
+#### Scenario: Exibir dashboard Admin
+
+- **WHEN** Admin acessa o dashboard
+- **THEN** vê os seis indicadores aprovados sem receber autorização baseada apenas na interface
+
+#### Scenario: Exibir dashboard Médico
+
+- **WHEN** Médico acessa o dashboard
+- **THEN** vê somente sua agenda do dia, horários e quantidade de consultas
+
+#### Scenario: Restringir consultas fora do perfil
+
+- **WHEN** Médico tenta obter indicadores globais ou a agenda de outro médico
+- **THEN** o backend nega o acesso mesmo que a solicitação seja enviada diretamente à API

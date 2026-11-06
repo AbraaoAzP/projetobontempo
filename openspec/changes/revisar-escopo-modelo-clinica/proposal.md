@@ -1,34 +1,35 @@
 ## Why
 
-O domínio e as especificações atuais descrevem pacientes, profissionais e agenda, mas o Xano local contém somente tabelas de usuário, paciente e profissional; ainda não há estrutura para especialidades, consultas ou prontuários. Antes de integrar Streamlit e Xano ou tratar dados clínicos, o grupo precisa reconciliar o escopo aprovado, as lacunas observadas e as cardinalidades ainda incertas, incluindo os riscos de privacidade sem login.
+O escopo aprovado agora inclui acesso autenticado para Admin e Médico, enquanto a Change ainda exclui login e papéis. Esta revisão reconcilia os requisitos de acesso, módulos e modelo clínico com o estado parcial do sistema sem implementar funcionalidades nem presumir que os recursos Xano versionados estejam publicados ou protegidos.
 
 ## What Changes
 
-- Registrar como escopo aprovado cinco módulos funcionais — Pacientes, Profissionais exclusivamente médicos, Especialidades médicas, Consultas e Prontuários — mantendo Início como página de apresentação e navegação, sem implementar novas telas.
-- Especificar as decisões aprovadas sobre prontuário e registro de atendimento, mantendo diagnóstico, anotações clínicas e conduta no registro, e não duplicados em Consulta.
-- Registrar como aprovada a relação N:N entre MÉDICO e ESPECIALIDADE, permitindo zero vínculos durante a transição e exigindo vínculo válido para agendar uma consulta; manter pendentes as demais decisões de cardinalidade, integridade, status e exclusão que o contexto não resolva.
-- Comparar tabelas, APIs e especificações locais com o modelo proposto; identificar endpoints de usuário e dependências de autenticação sem presumir que os arquivos locais representem a configuração publicada.
-- Registrar riscos de confidencialidade e critérios de segurança para dados clínicos sem introduzir login, gerenciamento de usuários/papéis ou integração nesta Change.
-- Após a aprovação das decisões de domínio, atualizar `docs/project-overview.md` e `docs/domain-model.md` para distinguir escopo aprovado de capacidades ainda não implementadas, e propor a implementação em Changes pequenas.
+- Registrar os cinco módulos funcionais — Pacientes, Médicos, Especialidades, Consultas e Prontuários — e os dois perfis aprovados, Admin e Médico, distinguindo escopo-alvo de funcionalidades implementadas.
+- Especificar login e autorização obrigatoriamente no backend Xano; avaliar a reutilização da tabela `user` e o vínculo de contas Médico aos registros de Profissional sem presumir que os recursos existentes já atendem a esses requisitos.
+- Definir o acesso funcional de cada perfil: Administração completa para Admin; agenda própria do dia e dados mínimos para atendimento para Médico; registro clínico somente para paciente efetivamente atendido pelo médico autor.
+- Especificar os indicadores dos dashboards administrativos e a agenda diária do médico, registrando as definições que ainda dependem de decisão.
+- Manter a relação N:N Médico–Especialidade, os vínculos de consulta, o prontuário longitudinal e a separação entre Consulta e Registro de Atendimento; preservar como pendentes as cardinalidades e regras ainda não aprovadas.
+- Identificar dependências entre autenticação/autorização, os CRUDs Xano existentes, a modelagem de Especialidades/Consultas e a migração gradual da persistência SQLite legada.
+- Atualizar `docs/project-overview.md` e `docs/domain-model.md` para distinguir requisitos aprovados, pendências e estado real da implementação.
 
-**Fora do escopo:** modificar, criar ou excluir tabelas, registros ou endpoints; alterar código Python/XanoScript; implementar autenticação, CRUD clínico ou integração Streamlit–Xano; decidir silenciosamente cardinalidades pendentes; usar dados reais de pacientes; executar archive, commit ou push.
+**Fora do escopo:** implementar qualquer funcionalidade; alterar código Python, XanoScript, tabelas, registros, endpoints ou permissões; migrar ou remover SQLite; criar novas Changes; decidir silenciosamente questões pendentes; usar dados reais de pacientes; executar archive, commit, push, merge ou deploy.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `modelo-clinico`: registrar as decisões conceituais aprovadas, os pontos de modelagem que precisam de confirmação e os critérios de integridade e privacidade que devem anteceder a implementação clínica.
+- `modelo-clinico`: definir perfis, vínculos de identidade, regras de acesso e relações clínicas necessárias ao escopo aprovado.
 
 ### Modified Capabilities
 
-- `pacientes`: explicitar a relação futura com prontuário e impedir que a regra de exclusão atual seja interpretada como autorização para deixar dados clínicos órfãos.
-- `profissionais`: restringir o escopo futuro a médicos e registrar a relação N:N aprovada com especialidades, sem exigir vínculo antes da transição e exigindo-o para consultas.
-- `interface-web`: alinhar o escopo-alvo de navegação às cinco áreas funcionais e à página Início, preservando o estado atual sem integração HTTP nesta Change.
+- `pacientes`: definir administração pelo Admin e acesso do Médico somente quando necessário a atendimento autorizado, preservando integridade clínica.
+- `profissionais`: restringir o cadastro administrativo a médicos e especificar o vínculo da conta de Médico ao registro profissional.
+- `interface-web`: acrescentar login, navegação e dashboards conforme o perfil, sem considerar controles visuais como autorização.
 
 ## Impact
 
-- Artefatos OpenSpec: nova delta `modelo-clinico` e deltas para `pacientes`, `profissionais` e `interface-web`.
-- Referências de implementação analisadas: `xano/table/user.xs`, `paciente.xs`, `profissional.xs`; grupos e endpoints locais de autenticação/usuário, pacientes e profissionais; frontend Streamlit atual.
-- Documentação de domínio e visão geral: atualizar somente após as decisões pendentes receberem aprovação explícita.
-- Não há alteração de código, APIs, dados, tabelas ou dependências nesta etapa de planejamento.
-- O PDF “Projeto - Gestão de Clínica de Saúde.pdf” não foi encontrado no workspace; a análise parte das decisões deste pedido e dos arquivos disponíveis.
+- Artefatos OpenSpec existentes: `modelo-clinico`, `pacientes`, `profissionais` e `interface-web`; nenhuma Change ou arquivo novo é criado nesta etapa.
+- Documentação: atualizar `docs/project-overview.md` e `docs/domain-model.md` com escopo-alvo, estado parcial, entidades, relações e pendências.
+- Referências Xano observadas: tabelas `user`, `paciente` e `profissional` e endpoints correspondentes. A existência de arquivos locais ou recursos remotos não comprova autenticação, autorização por papel ou segurança efetiva.
+- Dependências: proteger e reconciliar os CRUDs da Change `crud-pacientes-profissionais-xano-streamlit`; definir schema e regras de Especialidades/Consultas com `modelar-especialidades-consultas-xano`; migrar os módulos que ainda usam SQLite antes da remoção definitiva.
+- Não há alteração de código, APIs, dados, tabelas, permissões, dependências ou configuração Xano nesta etapa. O estado atual será descrito sem declarar os requisitos aprovados como implementados.

@@ -24,3 +24,24 @@ Quando o paciente possuir consultas, prontuário ou registros clínicos relacion
 
 - **WHEN** um paciente possui consultas, prontuário ou registros clínicos relacionados e a política de retenção ainda não foi aprovada
 - **THEN** a remoção não apaga os dados nem deixa referências órfãs, e a operação dependente permanece bloqueada
+
+### Requirement: Restringir operações sobre pacientes por perfil
+
+Admin SHALL poder listar, cadastrar, consultar, editar e excluir pacientes conforme as regras de integridade e retenção aprovadas. Médico SHALL acessar somente os dados de paciente necessários aos atendimentos próprios autorizados e SHALL NOT acessar o CRUD administrativo.
+
+O Xano SHALL autenticar e autorizar cada operação; a visibilidade de páginas ou botões no Streamlit SHALL NOT conceder permissão. A política exata de quais campos clínicos e cadastrais são necessários ao atendimento SHALL ser definida antes da implementação.
+
+#### Scenario: Administrar pacientes
+
+- **WHEN** Admin solicita uma operação permitida de gerenciamento de paciente
+- **THEN** o backend valida o perfil e aplica as regras de integridade antes de retornar ou alterar o registro
+
+#### Scenario: Médico consulta dados para atendimento autorizado
+
+- **WHEN** Médico acessa dados de paciente relacionado a atendimento próprio autorizado
+- **THEN** o backend retorna somente os dados necessários à funcionalidade do atendimento
+
+#### Scenario: Médico tenta usar CRUD administrativo
+
+- **WHEN** Médico tenta cadastrar, editar, excluir ou listar globalmente pacientes
+- **THEN** o backend nega a operação independentemente da interface utilizada

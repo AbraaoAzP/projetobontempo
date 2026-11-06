@@ -4,9 +4,9 @@
 
 Este projeto acadêmico é desenvolvido para a disciplina de Innovation Labs, ministrada pelo professor Bontempo.
 
-O sistema tem como objetivo realizar o controle de um consultório, organizando informações relacionadas aos pacientes, agendamentos, profissionais responsáveis pelos atendimentos, horários disponíveis e dias de atendimento.
+O sistema tem como objetivo apoiar a gestão de um consultório, com acesso autenticado para Admin e Médico e funcionalidades para pacientes, médicos, especialidades, consultas e prontuários.
 
-A proposta é centralizar essas informações em um único sistema, facilitando a organização da rotina do consultório e o controle dos atendimentos.
+O escopo aprovado não significa que essas funcionalidades já estejam implementadas. O estado atual e as lacunas são descritos na seção “Estado atual e evolução”.
 
 ## 2. Problema
 
@@ -18,74 +18,48 @@ O sistema busca organizar essas informações e facilitar o gerenciamento da age
 
 ## 3. Objetivos
 
-O objetivo principal do projeto é desenvolver um sistema para auxiliar no gerenciamento da agenda e dos atendimentos de um consultório.
+O objetivo principal é desenvolver um sistema para organizar a administração do consultório e apoiar os atendimentos médicos, protegendo dados por perfil.
 
 Entre os objetivos iniciais estão:
 
-- controlar os pacientes cadastrados;
-- controlar os profissionais responsáveis pelos atendimentos;
-- registrar os dias de atendimento dos profissionais;
-- registrar os horários disponíveis;
-- controlar os agendamentos;
-- facilitar a visualização da agenda;
-- evitar conflitos de horários.
+- autenticar usuários com perfil Admin ou Médico;
+- administrar pacientes, médicos, especialidades, consultas e prontuários;
+- apresentar indicadores administrativos e a agenda diária própria de cada médico;
+- vincular consultas a paciente, médico, especialidade, data, horário e status;
+- registrar atendimentos com autoria médica preservada;
+- validar integridade e conflitos de agenda no backend.
 
 ## 4. Público-alvo / usuários
 
-Os principais usuários do sistema serão as pessoas responsáveis pela organização e pelo gerenciamento dos atendimentos do consultório.
+Os perfis de acesso aprovados são:
 
-O sistema também deverá considerar:
+- **Admin:** administra pacientes, médicos, especialidades, consultas e prontuários, e consulta o dashboard administrativo.
+- **Médico:** consulta somente sua agenda diária e os dados necessários aos próprios atendimentos; registra prontuário de paciente efetivamente atendido por ele; não acessa funções administrativas.
 
-- profissionais responsáveis pelos atendimentos;
-- pacientes cadastrados no consultório.
+Pacientes são entidades atendidas, não perfis de acesso desta versão.
 
 ## 5. Escopo
 
-O escopo inicial do projeto contempla o controle das principais informações necessárias para o funcionamento da agenda do consultório.
-
-Inicialmente, o sistema deverá considerar:
-
-- cadastro e controle de pacientes;
-- cadastro e controle de profissionais;
-- definição dos dias de atendimento dos profissionais;
-- definição dos horários disponíveis;
-- criação e controle de agendamentos;
-- organização da agenda do consultório;
-- relacionamento entre paciente, profissional, data e horário do atendimento.
-
-Funcionalidades adicionais poderão ser definidas durante a evolução do projeto.
+O escopo-alvo aprovado inclui autenticação e os cinco módulos funcionais: Pacientes, Profissionais exclusivamente médicos, Especialidades, Consultas e Prontuários. A página Início é apresentação e navegação, não um módulo clínico. A implementação é incremental; capacidades ainda não disponíveis não devem ser apresentadas como prontas.
 
 ## 6. Principais funcionalidades
 
-As principais funcionalidades previstas inicialmente são:
+Requisitos funcionais aprovados para evolução:
 
-- cadastrar pacientes;
-- consultar pacientes cadastrados;
-- cadastrar profissionais;
-- consultar profissionais cadastrados;
-- definir dias de atendimento dos profissionais;
-- definir horários de atendimento;
-- consultar horários disponíveis;
-- criar agendamentos;
-- consultar agendamentos;
-- relacionar cada agendamento a um paciente;
-- relacionar cada agendamento a um profissional;
-- registrar a data e o horário do atendimento;
-- controlar a disponibilidade de horários;
-- evitar conflitos de agendamento para um mesmo profissional.
+- Login para Admin e Médico, com autenticação e autorização impostas pelo Xano.
+- Admin: dashboard com quantidades de pacientes e médicos, consultas agendadas, consultas do dia, realizadas e não realizadas; CRUD de pacientes, médicos, consultas e prontuários; consulta ao catálogo de especialidades.
+- Médico: dashboard somente com as próprias consultas do dia, horários e quantidade; acesso apenas aos dados necessários ao atendimento; registro clínico somente para paciente efetivamente atendido por ele.
+- Consultas vinculadas a paciente, médico, especialidade, data/hora e status; a especialidade deve pertencer ao médico selecionado.
+- Prontuários vinculados aos pacientes; registros de atendimento devem preservar médico autor e vínculo com atendimento conforme a modelagem aprovada.
+- Os exemplos de demonstração devem utilizar exclusivamente dados fictícios.
 
 ## 7. Requisitos e restrições importantes
 
-O sistema deverá manter a organização e a integridade das informações relacionadas aos atendimentos.
+O backend deverá validar autorização por perfil, identidade do médico, referências e regras de negócio. A interface Streamlit não é mecanismo de segurança.
 
-Entre as regras iniciais consideradas importantes estão:
+As consultas deverão ter referências válidas e evitar conflitos conforme regras definidas no backend. Os valores de status, transições e a definição exata de “não realizadas” ainda precisam de decisão. A relação médico–especialidade é N:N; durante a transição, médicos podem não ter vínculo, mas o agendamento exige especialidade vinculada. O campo textual legado não deverá ser convertido automaticamente.
 
-- um agendamento deverá estar relacionado a um paciente;
-- um agendamento deverá estar relacionado a um profissional;
-- o agendamento deverá possuir data e horário definidos;
-- os horários disponíveis deverão respeitar os dias e horários de atendimento dos profissionais;
-- um profissional não deverá possuir dois atendimentos agendados para o mesmo horário;
-- as regras detalhadas de funcionamento serão definidas de forma incremental durante o desenvolvimento.
+Médicos só poderão registrar atendimento quando o backend confirmar que foram autores do atendimento realizado. Conteúdo clínico deve ficar no registro de atendimento, não duplicado na consulta. As cardinalidades ainda não aprovadas e as regras de retenção/exclusão permanecem pendentes.
 
 ## 8. Arquitetura tecnológica
 
@@ -105,11 +79,11 @@ As principais ferramentas utilizadas serão:
 - Xano Developer MCP;
 - OpenSpec.
 
-O backend será desenvolvido no Xano e disponibilizado ao frontend por meio de APIs HTTP. A interface web será desenvolvida em Python utilizando Streamlit e deverá consumir essas APIs; o frontend não deverá acessar diretamente o banco de dados do Xano.
+O Xano é o backend e banco definitivo. O Streamlit será desenvolvido em Python e consumirá somente APIs HTTP do Xano; o frontend não acessará diretamente o banco. Autenticação e autorização por perfil, incluindo limites de dados por médico, deverão ser verificadas nos endpoints do backend.
 
 A URL base das APIs e eventuais credenciais deverão ser fornecidas por configuração externa, sem serem fixadas no código ou em arquivos versionados. Antes de habilitar chamadas, deverão ser confirmadas a URL base e as exigências de autenticação do ambiente.
 
-A primeira entrega da interface contempla somente sua estrutura inicial e a navegação entre Início, Pacientes e Profissionais. Nessa etapa, as páginas não realizarão chamadas HTTP ao Xano nem dependerão da disponibilidade das APIs.
+SQLite é uma persistência local legada e temporária ainda usada por Especialidades e Consultas. A remoção de sua inicialização e serviço depende da migração e validação desses módulos no Xano. O arquivo local não deve ser apagado implicitamente. A integração existente de Pacientes e Profissionais também depende da verificação de autorização no backend antes de ser habilitada para uso integrado.
 
 O projeto será versionado utilizando Git e GitHub.
 
@@ -127,13 +101,17 @@ O desenvolvimento deverá utilizar o OpenSpec para organizar e documentar as mud
 
 ## 10. Segurança e integridade
 
-O sistema deverá preservar a integridade das informações relacionadas a pacientes, profissionais e agendamentos.
+O sistema deve preservar confidencialidade e integridade de dados pessoais e clínicos. O Xano deve autenticar e autorizar cada operação; ocultar páginas ou controles não é suficiente. Admin acessa funções administrativas; Médico acessa somente sua agenda e dados necessários a atendimentos autorizados. Autoria clínica deve ser derivada da identidade autenticada e preservada. Não se deve habilitar dados clínicos até verificar políticas de acesso, exposição, auditoria e retenção.
 
-As regras relacionadas à disponibilidade de horários e conflitos de agenda deverão ser validadas no backend.
+Utilizar exclusivamente dados fictícios de demonstração. A configuração externa e o conteúdo versionado não devem expor credenciais, tokens ou dados pessoais.
 
-Regras específicas de autenticação, autorização e controle de acesso poderão ser definidas conforme a evolução do projeto.
+## 11. Estado atual e evolução
 
-## 11. Estratégia de desenvolvimento
+O repositório possui uma interface Streamlit multipágina. Pacientes e Profissionais têm páginas CRUD conectadas a endpoints HTTP do Xano; a implementação não comprova autorização Admin/Médico. Especialidades e Consultas operam somente no SQLite local. Não foram identificados dashboards por perfil nem módulos de prontuário/registro de atendimento. O Xano inspecionado tem recursos de `user`, `paciente` e `profissional`, mas não há evidência suficiente de autenticação, papéis ou autorização por módulo. Esses fatos não equivalem à validação do ambiente publicado.
+
+A evolução deve ocorrer em etapas com OpenSpec: (1) definir e validar autenticação, papéis e vínculo conta–Médico no Xano; (2) reconciliar e proteger os CRUDs existentes; (3) modelar e migrar Especialidades e Consultas; (4) implementar dashboards por perfil; (5) implementar prontuários e registros de atendimento com autoria e acesso mínimo; (6) executar testes integrados com dados fictícios e remover SQLite somente após migração validada. As definições de status, fuso/período dos dashboards, cardinalidades clínicas e retenção são pré-requisitos ainda pendentes.
+
+## 12. Estratégia de desenvolvimento
 
 O desenvolvimento será realizado através de mudanças incrementais.
 
@@ -143,7 +121,7 @@ O OpenSpec será utilizado para auxiliar na especificação das mudanças.
 
 O Git e o GitHub serão utilizados para controle de versão, histórico das alterações e organização do desenvolvimento.
 
-## 12. Fonte de verdade e documentação
+## 13. Fonte de verdade e documentação
 
 A documentação do projeto deverá ser mantida nos arquivos de contexto e nas especificações do OpenSpec.
 
