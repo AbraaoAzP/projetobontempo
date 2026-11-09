@@ -287,6 +287,21 @@ def list_appointments(db_path: str | Path | None = None) -> list[dict[str, objec
     return [dict(row) for row in rows]
 
 
+def list_appointment_summaries(
+    db_path: str | Path | None = None,
+) -> list[dict[str, object]]:
+    with _connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT c.inicio_em, s.codigo AS status_codigo, s.nome AS status_nome
+            FROM consultas AS c
+            JOIN status_consulta AS s ON s.id = c.status_consulta_id
+            ORDER BY c.inicio_em
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def create_appointment(
     patient_id: int,
     professional_id: int,
