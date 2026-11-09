@@ -307,7 +307,7 @@ class TestXanoClient(unittest.TestCase):
         )
         self.assertEqual(settings.patients_base_url, "")
 
-    def test_specialty_routes_use_singular_paths_and_keep_json_unmodified(self) -> None:
+    def test_specialty_crud_uses_confirmed_routes_and_validates_records(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             settings = XanoSettings.from_environment()
 
@@ -320,14 +320,11 @@ class TestXanoClient(unittest.TestCase):
             "especialidade/{especialidade_id}",
         )
 
-        list_response = self._response(
-            {"items": [{"id": 7, "created_at": "timestamp", "nome": "Fictícia"}]}
-        )
-        item_response = self._response(
-            {"data": {"id": 7, "created_at": "timestamp", "nome": "Fictícia"}}
-        )
-        create_response = self._response({"result": "created"})
-        update_response = self._response({"result": "updated"})
+        specialty = {"id": 7, "created_at": 1762700000, "nome": "Fictícia"}
+        list_response = self._response([specialty])
+        item_response = self._response(specialty)
+        create_response = self._response({"id": 8, "nome": "Nova"})
+        update_response = self._response({"id": 7, "nome": "Outra fictícia"})
         delete_response = Mock(status_code=204)
         self.transport.request.side_effect = [
             list_response,
@@ -338,22 +335,22 @@ class TestXanoClient(unittest.TestCase):
         ]
         client = XanoClient(settings, self.transport)
 
-        self.assertIs(client.list_specialties(), list_response)
-        self.assertIs(client.get_specialty(7), item_response)
+        self.assertEqual(client.list_specialties(), [{"id": 7, "nome": "Fictícia"}])
+        self.assertEqual(client.get_specialty(7), {"id": 7, "nome": "Fictícia"})
         with patch.dict(
             os.environ,
             {XANO_ESPECIALIDADES_WRITE_ENABLED_ENV: "true"},
             clear=True,
         ):
-            self.assertIs(
+            self.assertEqual(
                 client.create_specialty({"nome": "  Fictícia  "}),
-                create_response,
+                {"id": 8, "nome": "Nova"},
             )
-            self.assertIs(
+            self.assertEqual(
                 client.update_specialty(7, {"nome": "Outra fictícia"}),
-                update_response,
+                {"id": 7, "nome": "Outra fictícia"},
             )
-            self.assertIs(client.delete_specialty(7), delete_response)
+            self.assertIsNone(client.delete_specialty(7))
 
         calls = self.transport.request.call_args_list
         self.assertEqual(
@@ -386,10 +383,24 @@ class TestXanoClient(unittest.TestCase):
             self.client.create_specialty({"nome": "Fictícia", "id": 7})
         with self.assertRaises(XanoResponseError):
             self.client.update_specialty(7, {"nome": 123})
+        with self.assertRaises(XanoResponseError):
+            self.client.update_specialty(7, {})
         self.transport.request.assert_not_called()
 
-    def test_specialty_writes_are_disabled_by_default(self) -> None:
+    def test_specialty_read_and_write_are_enabled_by_default_and_can_be_disabled(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(specialties_api_enabled())
+            self.assertTrue(specialties_write_enabled())
+
+        with patch.dict(
+            os.environ,
+            {
+                XANO_ESPECIALIDADES_API_ENABLED_ENV: "false",
+                XANO_ESPECIALIDADES_WRITE_ENABLED_ENV: "false",
+            },
+            clear=True,
+        ):
+            self.assertFalse(specialties_api_enabled())
             self.assertFalse(specialties_write_enabled())
             with self.assertRaises(XanoConfigurationError):
                 self.client.create_specialty({"nome": "Fictícia"})
@@ -428,9 +439,9 @@ class TestXanoClient(unittest.TestCase):
             client = XanoClient(settings, self.transport)
             self.transport.request.return_value = self._response([])
 
-            response = client.list_specialties()
+            specialties = client.list_specialties()
 
-        self.assertEqual(response.json.return_value, [])
+        self.assertEqual(specialties, [])
         self.assertEqual(
             self.transport.request.call_args.args[1],
             f"{custom_url}/especialidade",

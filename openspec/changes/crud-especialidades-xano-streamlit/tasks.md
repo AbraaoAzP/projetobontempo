@@ -1,34 +1,30 @@
-## 1. Confirmar contrato e pré-condições Xano
+## 1. Confirmar contrato e limites Xano
 
-- [x] 1.1 Obter inventário remoto de Especialidades por consulta somente de leitura autorizada e registrar schema, validações, operações, parâmetros, campos, respostas, erros, dependências e controles de acesso, sem copiar valores de registros; verificar o resultado contra os arquivos Xano locais. O pull sem `--records` encontrou 29 documentos, nenhuma tabela/API de Especialidades e não expôs política efetiva de autorização.
-- [ ] 1.2 Confirmar o destino não-live e as permissões de desenvolvimento/publicação; verificar que `v1 live` não será alterada e que nenhuma escrita ou publicação será feita sem autorização explícita. Se não houver destino seguro ou autorização, manter a integração real bloqueada. Revalidação somente de leitura em 2026-11-08 encontrou apenas `v1` live. `profile me` e `branch get` não expõem permissão efetiva de criação/publicação; nenhuma branch foi criada e a integração continua bloqueada. Pendente até existir branch não-live e permissão de uso/publicação verificável.
-- [x] 1.3 Definir e documentar o contrato HTTP local proposto para Especialidades seguindo os padrões Xano existentes, incluindo nome dos campos, rotas, métodos, payloads, projeção, validações e resposta de conflito para DELETE bloqueado; verificar que nenhuma informação local é apresentada como contrato remoto publicado. O design identifica o contrato como local/proposto e não como API remota disponível.
+- [x] 1.1 Registrar as rotas e campos informados pelo usuário para o grupo existente: GET/POST `/especialidade`, GET/PATCH/DELETE `/especialidade/{especialidade_id}`, campos `id`, `created_at` e `nome`.
+- [x] 1.2 Fazer leitura real autorizada da coleção sem registrar valores de registros; verificar status e forma da resposta. Em 2026-11-09, GET respondeu HTTP 200 com lista vazia; a página Streamlit foi exercitada com GET real sem exceções e mostrou o estado vazio. Após autorização explícita, POST/GET por ID/PATCH/GET/DELETE/GET final foram validados com um único registro sintético, removido ao final; nenhum valor ou ID foi registrado.
+- [x] 1.3 Manter o uso sem autenticação conforme solicitado, sem interpretar `Public` como prova de segurança e sem alterar configurações de segurança, scripts ou publicação Xano. Escritas remotas só serão executadas após apresentar plano e obter autorização explícita.
 
-## 2. Preparar o backend Xano
+## 2. Integrar o cliente HTTP existente
 
-- [ ] 2.1 Criar somente os arquivos locais XanoScript do schema `especialidade`, grupo `Especialidades` e endpoints GET/POST/PATCH/DELETE conforme o contrato local aprovado; verificar que o diff contém apenas novos arquivos e nenhuma alteração ou publicação remota. Estado local: tabela, grupo e quatro endpoints GET/GET/POST/PATCH foram preparados; DELETE permanece ausente, então a tarefa não está concluída.
-- [ ] 2.2 Implementar no backend validação de nome obrigatório, trim, unicidade normalizada e tratamento de duplicidade concorrente; verificar duplicados com variação de caixa/espaços e ausência de persistência parcial usando dados sintéticos em ambiente autorizado. O índice único e as verificações prévias estão no XanoScript local, mas o tratamento observável de corrida e os testes sintéticos de persistência requerem um destino não-live autorizado, ainda inexistente.
-- [ ] 2.3 Manter o endpoint DELETE fail-closed enquanto as relações `profissional_especialidade` e `consulta` não puderem ser verificadas: retornar conflito sem mutação; validar o script local e conferir que não há chamada `db.del` executável. O endpoint ainda não foi criado: o contrato pede HTTP 409, mas o validador rejeita `error_type = "conflict"` e não há mecanismo 409 confirmado. Nenhum `db.del` foi adicionado.
-- [x] 2.4 Validar sintaxe dos XanoScript locais com a ferramenta Xano disponível e revisar o diff; verificar que validação não publicou recursos nem escreveu no Xano remoto. Os seis arquivos locais preparados foram validados sem publicação ou escrita remota.
+- [x] 2.1 Implementar GET coleção/ID, POST, PATCH e DELETE usando apenas as rotas informadas e o transporte existente; validar `id` e `nome`, trim de entrada, timeout, falhas HTTP e respostas incompatíveis.
+- [x] 2.2 Validar rotas, payloads, flags, parsing e erros com transporte mockado, sem chamadas HTTP reais.
+- [x] 2.3 Habilitar a integração por padrão com flags externas de opt-out para leitura e escrita; manter base URL configurável externamente e sem credenciais versionadas.
 
-## 3. Integrar serviço HTTP e página Streamlit
+## 3. Implementar a página Streamlit
 
-- [ ] 3.1 Estender o serviço HTTP tipado existente para Especialidades usando somente rotas, campos e configuração externa confirmados; verificar CRUD, validação de resposta, timeout e erros com transporte simulado, sem chamadas de rede.
-- [ ] 3.2 Migrar a página de Especialidades para listar, consultar, cadastrar e editar pelo serviço Xano, com estados de carregamento, vazio, sucesso, configuração pendente e erro; verificar fluxos com `AppTest` e mocks.
-- [ ] 3.3 Implementar exclusão com confirmação explícita, cancelamento sem chamada e tratamento de referência/erro; verificar com `AppTest` que DELETE só ocorre após confirmação e que falha nunca é mostrada como sucesso.
-- [x] 3.4 Manter chamadas reais desabilitadas até autorização e configuração aprovadas; verificar que configuração ausente, API desabilitada ou falha não provoca chamadas nem fallback SQLite. A leitura usa flag própria desligada por padrão; gravações têm gate separado desligado por padrão e não estão expostas na página. Testes mockados confirmam ausência de chamadas e de acesso SQLite quando a leitura está desabilitada.
+- [x] 3.1 Exibir listagem do Xano, estado vazio, carregamento, erros e configuração desabilitada, sem fallback SQLite.
+- [x] 3.2 Implementar cadastro, consulta individual e edição; validar nome obrigatório, trim e duplicidade contra o catálogo carregado, sem apresentar a validação local como garantia de unicidade concorrente do backend.
+- [x] 3.3 Implementar exclusão do ID selecionado somente após confirmação explícita; apresentar erros do Xano sem sucesso fictício. Testar a interface com mocks, sem DELETE remoto.
+- [x] 3.4 Não alterar Dashboard, `frontend/app.py`, Consultas, Prontuários ou outras Changes.
 
-## 4. Preservar compatibilidade e verificar a mudança
+## 4. Preservar, validar e concluir
 
-- [x] 4.1 Manter `frontend/services/database.py`, o schema e a inicialização SQLite usados por Consultas; verificar que Consultas continua lendo o catálogo local e documentar a diferença temporária em relação ao catálogo Xano.
-- [x] 4.2 Atualizar a documentação do frontend com a configuração efetivamente confirmada, as operações disponíveis, os limites de habilitação e a dependência SQLite de Consultas; verificar que não foram incluídos segredos nem rotas presumidas.
-- [x] 4.3 Executar `.\.venv\Scripts\python.exe -m unittest discover -s tests -v` a partir de `frontend`; verificar operações CRUD simuladas, validações, erros, Consultas SQLite e ausência de chamadas reais. Resultado inicial: 54 testes aprovados. Após preparar o cliente e a página de leitura de Especialidades com mocks, a suíte completa passou com 67 testes; nenhuma chamada real ao Xano foi feita.
-- [x] 4.4 Revisar `git status`, `git diff` e `git diff --check`; verificar que `frontend/app.py` e alterações preexistentes permaneceram intactos, que nenhum dado SQLite foi removido e que não houve push, archive, escrita remota ou publicação Xano. O diff preexistente de `frontend/app.py` permaneceu igual ao observado antes da implementação; os arquivos de outras Changes e os XanoScripts preexistentes permanecem fora deste checkpoint seletivo.
+- [x] 4.1 Preservar SQLite, sua inicialização e o catálogo local ainda usado por Consultas; não copiar ou migrar dados.
+- [x] 4.2 Atualizar a documentação com o contrato informado, o resultado do GET real, os limites de autorização e os controles de configuração.
+- [x] 4.3 Executar a suíte completa de testes, validar OpenSpec strict, revisar `git diff --check` e verificar que os testes não fizeram mutações remotas nem alteraram arquivos fora do escopo. Resultado: 72 testes passaram; OpenSpec strict válido; `git diff --check` sem erros. Os testes usam mocks e não enviaram mutações remotas.
+- [x] 4.4 Apresentar o plano de POST, PATCH e DELETE usando somente uma especialidade sintética criada para o teste; aguardar autorização explícita antes de executar as mutações. O usuário autorizou em 2026-11-09. POST, PATCH e DELETE foram executados somente no registro criado para o teste, e o GET final confirmou sua remoção. Nenhum registro preexistente foi alterado.
+- [ ] 4.5 Após as validações autorizadas, revisar e fazer commit seletivo somente dos arquivos desta Change; arquivar em commit separado somente quando todos os critérios estiverem concluídos.
 
-## Atualização do contrato informada pelo usuário (2026-11-09)
+## Limites confirmados
 
-O usuário informou que o grupo publicado usa base URL `https://x8ki-letl-twmt.n7.xano.io/api:Cv9TB_MS`, coleção `/especialidade` para GET/POST e `/especialidade/{especialidade_id}` para GET/PATCH/DELETE. Informou ainda os campos de tabela `id` (integer), `created_at` (timestamp) e `nome` (text). Esses dados não foram verificados por chamada ou consulta de metadados ao Xano.
-
-O cliente local foi adaptado a essas rotas e prepara o campo de tabela conhecido `nome`; o schema de entrada das APIs não foi confirmado. Ele devolve as respostas HTTP sem interpretá-las. A página oferece somente leitura bruta, desligada por padrão com `XANO_ESPECIALIDADES_API_ENABLED`; as operações de escrita do cliente exigem `XANO_ESPECIALIDADES_WRITE_ENABLED`, também desligada por padrão, e não são oferecidas pela interface. Os testes usam apenas mocks.
-
-Permanecem desconhecidos os formatos de resposta, códigos e corpos de erro, validação de unicidade, integridade referencial, comportamento efetivo de DELETE e controles efetivos de autorização dos endpoints indicados como `Public`. Por isso, as tarefas que dependem desses fatos continuam pendentes; nenhuma chamada HTTP real, escrita ou publicação foi executada.
+Não criar nem publicar scripts Xano nesta Change, pois os endpoints informados já existem. O usuário autorizou a integração real e leituras; cada validação remota por POST, PATCH ou DELETE depende de um plano prévio e autorização explícita. Os testes automatizados devem continuar usando mocks. A garantia de unicidade concorrente e o comportamento de integridade referencial da API ainda não foram confirmados.

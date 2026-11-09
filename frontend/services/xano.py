@@ -46,14 +46,14 @@ def api_enabled() -> bool:
 
 def specialties_api_enabled() -> bool:
     return (
-        os.getenv(XANO_ESPECIALIDADES_API_ENABLED_ENV, "").strip().lower()
+        os.getenv(XANO_ESPECIALIDADES_API_ENABLED_ENV, "true").strip().lower()
         == "true"
     )
 
 
 def specialties_write_enabled() -> bool:
     return (
-        os.getenv(XANO_ESPECIALIDADES_WRITE_ENABLED_ENV, "").strip().lower()
+        os.getenv(XANO_ESPECIALIDADES_WRITE_ENABLED_ENV, "true").strip().lower()
         == "true"
     )
 
@@ -268,49 +268,53 @@ class XanoClient:
                 "A resposta de exclusão do Xano não confirmou o sucesso."
             )
 
-    def list_specialties(self) -> requests.Response:
+    def list_specialties(self) -> list[dict[str, Any]]:
         endpoints = self._settings.endpoints_for("especialidades")
-        return self._send(
-            "especialidades", "GET", endpoints.collection_path
-        )
+        response = self._send("especialidades", "GET", endpoints.collection_path)
+        data = _parse_json(response)
+        if not isinstance(data, list):
+            raise XanoResponseError("A resposta do Xano não é uma lista.")
+        return [_validate_specialty_record(item) for item in data]
 
-    def get_specialty(self, specialty_id: int) -> requests.Response:
+    def get_specialty(self, specialty_id: int) -> dict[str, Any]:
         endpoints = self._settings.endpoints_for("especialidades")
         path = _format_item_path(
             endpoints.item_path,
             specialty_id,
             endpoints.identifier_parameter,
         )
-        return self._send("especialidades", "GET", path)
+        return _validate_specialty_record(
+            _parse_json(self._send("especialidades", "GET", path))
+        )
 
     def create_specialty(
         self, payload: Mapping[str, Any]
-    ) -> requests.Response:
+    ) -> dict[str, Any]:
         endpoints = self._settings.endpoints_for("especialidades")
-        clean_payload = _validate_specialty_payload(payload, require_name=True)
+        clean_payload = _validate_specialty_payload(payload)
         _require_specialty_writes_enabled()
-        return self._send(
+        response = self._send(
             "especialidades", "POST", endpoints.create_path, clean_payload
         )
+        return _validate_specialty_record(_parse_json(response))
 
     def update_specialty(
         self, specialty_id: int, payload: Mapping[str, Any]
-    ) -> requests.Response:
+    ) -> dict[str, Any]:
         endpoints = self._settings.endpoints_for("especialidades")
         path = _format_item_path(
             endpoints.update_path,
             specialty_id,
             endpoints.identifier_parameter,
         )
-        clean_payload = _validate_specialty_payload(
-            payload, require_name=False
-        )
+        clean_payload = _validate_specialty_payload(payload)
         _require_specialty_writes_enabled()
-        return self._send(
+        response = self._send(
             "especialidades", "PATCH", path, clean_payload
         )
+        return _validate_specialty_record(_parse_json(response))
 
-    def delete_specialty(self, specialty_id: int) -> requests.Response:
+    def delete_specialty(self, specialty_id: int) -> None:
         _require_specialty_writes_enabled()
         endpoints = self._settings.endpoints_for("especialidades")
         path = _format_item_path(
@@ -318,7 +322,7 @@ class XanoClient:
             specialty_id,
             endpoints.identifier_parameter,
         )
-        return self._send("especialidades", "DELETE", path)
+        self._send("especialidades", "DELETE", path)
 
     def _send(
         self,
@@ -462,18 +466,14 @@ def _validate_payload(
 
 def _validate_specialty_payload(
     payload: Mapping[str, Any],
-    *,
-    require_name: bool,
 ) -> dict[str, str]:
     if not isinstance(payload, Mapping):
         raise XanoResponseError("Os dados enviados precisam ser um objeto.")
     if set(payload).difference({"nome"}):
         raise XanoResponseError("Os dados enviados contêm campos não permitidos.")
 
-    if require_name and "nome" not in payload:
-        raise XanoResponseError("O campo nome é obrigatório.")
     if "nome" not in payload:
-        return {}
+        raise XanoResponseError("O campo nome é obrigatório.")
 
     name = payload["nome"]
     if not isinstance(name, str) or not name.strip():
@@ -481,11 +481,25 @@ def _validate_specialty_payload(
     return {"nome": name.strip()}
 
 
+def _validate_specialty_record(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise XanoResponseError("O registro retornado pelo Xano não é um objeto.")
+
+    record_id = value.get("id")
+    name = value.get("nome")
+    if isinstance(record_id, bool) or not isinstance(record_id, int) or record_id < 1:
+        raise XanoResponseError("O identificador da especialidade é inválido.")
+    if not isinstance(name, str) or not name.strip():
+        raise XanoResponseError("O nome da especialidade retornado pelo Xano é inválido.")
+
+    return {"id": record_id, "nome": name}
+
+
 def _require_specialty_writes_enabled() -> None:
     if not specialties_write_enabled():
         raise XanoConfigurationError(
-            "As gravações de Especialidades estão desabilitadas até a "
-            "confirmação dos controles de autorização."
+            "As gravações de Especialidades estão desabilitadas pela configuração "
+            "XANO_ESPECIALIDADES_WRITE_ENABLED."
         )
 
 

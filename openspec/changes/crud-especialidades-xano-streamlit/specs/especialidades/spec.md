@@ -30,12 +30,12 @@ O sistema SHALL permitir listar especialidades e consultar uma especialidade ind
 
 ### Requirement: Cadastrar e editar especialidades
 
-O sistema SHALL permitir cadastrar e editar o nome de uma especialidade por meio das operações confirmadas no Xano. O nome SHALL ser obrigatório, ter espaços externos removidos e ser único após normalização sem distinção de caixa, preservando acentos. O backend SHALL aplicar a unicidade e rejeitar entradas inválidas sem persistência parcial. O mapeamento entre o modelo local conhecido e os campos de API SHALL ser estabelecido pela confirmação do contrato, não presumido pela interface.
+O sistema SHALL permitir cadastrar e editar o nome de uma especialidade por meio das operações confirmadas no Xano. O nome SHALL ser obrigatório e ter espaços externos removidos. Antes de gravar, o frontend SHALL rejeitar nomes equivalentes após trim e comparação sem distinção de caixa contra o catálogo carregado, preservando acentos. Respostas de erro do Xano SHALL ser apresentadas sem serem convertidas em sucesso. Essa validação do frontend não SHALL ser apresentada como garantia de unicidade concorrente do backend.
 
 #### Scenario: Cadastrar nome válido
 
 - **WHEN** uma pessoa envia um nome não vazio e ainda não cadastrado após normalização
-- **THEN** o backend persiste a especialidade e a interface informa o sucesso somente após uma resposta válida da API
+- **THEN** o frontend envia somente o campo `nome` e informa sucesso somente após resposta HTTP de sucesso e registro compatível com `id` e `nome`
 
 #### Scenario: Rejeitar nome vazio
 
@@ -45,7 +45,12 @@ O sistema SHALL permitir cadastrar e editar o nome de uma especialidade por meio
 #### Scenario: Rejeitar nome duplicado
 
 - **WHEN** uma pessoa cadastra ou altera o nome para um valor equivalente a outro após trim e normalização sem distinção de caixa
-- **THEN** o backend rejeita a operação e mantém os registros existentes sem alteração parcial
+- **THEN** o frontend bloqueia a gravação antes da chamada e informa a duplicidade com base no catálogo carregado
+
+#### Scenario: O Xano rejeita cadastro ou edição
+
+- **WHEN** a API rejeita uma gravação, inclusive por duplicidade ou referência
+- **THEN** o sistema apresenta o erro HTTP e não informa sucesso
 
 #### Scenario: Editar especialidade existente
 
@@ -57,47 +62,42 @@ O sistema SHALL permitir cadastrar e editar o nome de uma especialidade por meio
 - **WHEN** a API informa que o identificador não existe ou a gravação falha
 - **THEN** o sistema comunica o erro e não apresenta a alteração como concluída
 
-### Requirement: Bloquear exclusão até garantir integridade referencial
+### Requirement: Excluir especialidade com confirmação explícita
 
-Enquanto as relações de Especialidades com profissionais e consultas não estiverem implementadas com proteção referencial verificável, a operação DELETE SHALL retornar conflito sem alterar ou remover qualquer registro. Depois que as relações existirem e a proteção for verificada, o backend poderá excluir apenas uma especialidade sem referências e SHALL rejeitar a exclusão de registros referenciados sem cascata. A interface SHALL exigir confirmação explícita e informar o resultado real da API.
+O frontend SHALL enviar DELETE somente para o identificador selecionado após confirmação explícita. Em caso de erro HTTP, inclusive conflito por referência, SHALL informar a falha sem apresentar sucesso. Um teste remoto de exclusão SHALL usar exclusivamente um registro fictício criado para esse teste; os testes automatizados locais SHALL usar mocks e não SHALL excluir registros remotos.
 
-#### Scenario: Exclusão bloqueada enquanto referências não podem ser verificadas
+#### Scenario: Excluir especialidade fictícia de teste
 
-- **WHEN** a operação DELETE é chamada antes de existirem as relações e a proteção referencial verificável
-- **THEN** o backend retorna conflito e mantém a especialidade e todos os demais registros inalterados
+- **WHEN** a pessoa confirma a exclusão de uma especialidade fictícia criada especificamente para o teste remoto e o Xano responde com sucesso
+- **THEN** a interface informa a exclusão e atualiza o catálogo
 
-#### Scenario: Excluir especialidade sem referências após habilitar integridade
+#### Scenario: API bloqueia exclusão
 
-- **WHEN** as relações e salvaguardas foram implementadas e verificadas, a pessoa confirma a exclusão e não há referências à especialidade
-- **THEN** o backend remove somente a especialidade identificada e a interface atualiza a listagem
-
-#### Scenario: Excluir especialidade referenciada após habilitar integridade
-
-- **WHEN** as relações e salvaguardas foram implementadas e verificadas e a pessoa confirma a exclusão de uma especialidade referenciada
-- **THEN** o backend rejeita a operação sem cascata e preserva todos os registros relacionados
+- **WHEN** a pessoa confirma a exclusão e o Xano rejeita a operação, por exemplo por referência
+- **THEN** a interface apresenta o erro e não informa sucesso
 
 #### Scenario: Cancelar ou não confirmar exclusão
 
 - **WHEN** a pessoa não confirma a exclusão
 - **THEN** nenhuma solicitação de exclusão é enviada
 
-#### Scenario: Excluir especialidade inexistente ou com falha
+#### Scenario: Preservar registros existentes durante testes remotos
 
-- **WHEN** a API informa que a especialidade não existe ou a exclusão falha
-- **THEN** o sistema comunica o erro e não informa sucesso
+- **WHEN** uma validação remota de escrita é executada
+- **THEN** somente o registro fictício criado para esse fim pode ser alterado ou excluído; registros preexistentes não são usados como dados de teste
 
-### Requirement: Restringir a integração ao contrato Xano confirmado
+### Requirement: Usar a integração Xano autorizada
 
-O frontend SHALL consumir Especialidades somente por APIs HTTP Xano cujo método, rota, parâmetros, campos, respostas e requisitos de autorização tenham sido confirmados. URLs e credenciais necessárias SHALL vir de configuração externa. Quando configuração, contrato ou habilitação estiverem ausentes, o sistema SHALL informar o bloqueio e não SHALL chamar rotas presumidas nem usar SQLite como fallback para Especialidades.
+O frontend SHALL consumir Especialidades somente pelas rotas informadas e autorizadas pelo usuário: GET/POST `/especialidade` e GET/PATCH/DELETE `/especialidade/{especialidade_id}`. A base URL SHALL ser sobrescrevível por configuração externa. A integração ficará habilitada por padrão e poderá ser desabilitada pelas flags do módulo. A indicação `Public` não SHALL ser interpretada como prova de controles de segurança; esta Change não altera a segurança no Xano nem adiciona autenticação. Especialidades não SHALL usar SQLite como fallback.
 
-#### Scenario: Operar com integração confirmada e habilitada
+#### Scenario: Operar com integração habilitada
 
-- **WHEN** existe contrato confirmado e a configuração externa habilita a integração
+- **WHEN** a página é acessada com a integração habilitada
 - **THEN** as operações de Especialidades usam somente as APIs confirmadas e apresentam as respostas ou erros reais
 
-#### Scenario: Contrato ou configuração pendente
+#### Scenario: Integração desabilitada ou configuração ausente
 
-- **WHEN** o contrato, a configuração externa ou a habilitação não está disponível
+- **WHEN** a integração está desabilitada ou a configuração externa é inválida
 - **THEN** a interface informa a pendência e não envia requisições nem apresenta sucesso simulado
 
 #### Scenario: Falha HTTP ou resposta incompatível

@@ -64,33 +64,42 @@ simulado; nenhuma requisição real ao Xano é feita pela suíte.
 
 ### Especialidades
 
-Em 2026-11-09, o usuário informou o contrato parcial publicado:
+Em 2026-11-09, o usuário confirmou o contrato e autorizou integrar os endpoints
+públicos existentes, sem autenticação nesta etapa:
 
 - Base URL: `https://x8ki-letl-twmt.n7.xano.io/api:Cv9TB_MS`
 - GET/POST da coleção: `/especialidade`
 - GET/PATCH/DELETE por ID: `/especialidade/{especialidade_id}`
 - Campos da tabela: `id` (integer), `created_at` (timestamp), `nome` (text)
 
-Essa informação ainda não foi verificada por leitura do schema publicado. Os
-scripts XanoScript locais são propostas e diferem desse contrato: usam
-`/especialidades` na coleção, omitem `created_at` e não possuem DELETE. Não
-recriar nem publicar esses scripts para substituir os endpoints informados.
-Os campos de entrada das APIs, formatos de response, erros, unicidade,
-referências e comportamento de DELETE continuam desconhecidos; não inferir
-envelopes nem que a exclusão seja segura.
+O GET real da coleção foi validado em 2026-11-09: HTTP 200, JSON em forma de
+lista vazia. Após autorização explícita, foi validado um ciclo controlado com um
+único registro fictício: POST, GET por ID, PATCH, novo GET, DELETE confirmado
+e GET final. As respostas de registro foram compatíveis com `id` e `nome`; o
+GET final confirmou que o registro de teste não permaneceu. Nenhum registro
+preexistente foi alterado e nenhum ID ou valor de registro foi documentado.
 
-Os endpoints aparecem como `Public`, mas a política efetiva de autorização e
-quaisquer restrições adicionais não foram confirmadas. A página somente faz
-GET quando `XANO_ESPECIALIDADES_API_ENABLED=true`; a flag é específica deste
-módulo e fica desligada por padrão. `XANO_ESPECIALIDADES_BASE_URL` pode
-sobrescrever a URL informada. Antes de habilitar leitura, confirme o ambiente e
-o escopo dos dados expostos. A página apresenta o corpo bruto sem interpretar
-ou presumir seu formato. O cliente prepara gravações com o único campo conhecido
-da tabela (`nome`), sem que isso confirme o schema de entrada das APIs. As
-operações POST/PATCH/DELETE também exigem
-`XANO_ESPECIALIDADES_WRITE_ENABLED=true`, que não deve ser configurada antes de
-confirmar os controles de autorização; a interface ainda não oferece essas
-ações. Nenhum GET real, escrita remota ou publicação foi realizada nesta etapa.
+A página usa o cliente HTTP compartilhado para listar, consultar, cadastrar,
+editar e excluir. O cliente valida `id` e `nome`, envia apenas `nome` nas
+gravações e não presume nem exibe `created_at`. O nome é obrigatório, tem
+espaços externos removidos e é comparado sem distinção de caixa com o catálogo
+carregado; as respostas e erros HTTP do Xano continuam sendo a autoridade final.
+A exclusão exige confirmação explícita, afeta somente o ID escolhido e exibe
+erros de referência retornados pela API; não há exclusão em cascata implementada
+no frontend.
+
+As flags `XANO_ESPECIALIDADES_API_ENABLED` e
+`XANO_ESPECIALIDADES_WRITE_ENABLED` ficam habilitadas por padrão para esta
+integração, e podem ser definidas como `false` para desabilitar leituras ou
+escritas. `XANO_ESPECIALIDADES_BASE_URL` pode sobrescrever a base URL. O endpoint
+é `Public`; não foi adicionado cabeçalho de autenticação nem alterada a política
+de segurança do Xano. Antes de qualquer POST, PATCH ou DELETE real executado
+durante validação, é necessário apresentar o plano e obter autorização explícita.
+Os testes automatizados usam somente mocks e nunca alteram registros remotos.
+
+Os scripts XanoScript locais são propostas que diferem do grupo informado:
+usam `/especialidades` na coleção, omitem `created_at` e não possuem DELETE.
+Eles permanecem intocados e não serão publicados nesta Change.
 
 Consultas continua usando o catálogo SQLite local; não há sincronização com o
 catálogo Xano. Especialidades não usa SQLite como fallback e esta integração
@@ -141,12 +150,15 @@ registros sintéticos permanece pendente de autorização específica.
 ## Persistência legada durante a migração
 
 SQLite é apenas uma implementação legada temporária, não parte da arquitetura
-oficial. Pacientes e Profissionais serão migrados para APIs Xano; Especialidades
-e Consultas ainda dependem do serviço SQLite até suas próprias etapas de
-migração. Nenhuma nova funcionalidade SQLite deverá ser adicionada. Após migrar
-todos os módulos, uma etapa posterior removerá o serviço, a inicialização e as
-dependências SQLite. O arquivo `frontend/data/bontempo_demo.sqlite3` não é
-removido nem importado automaticamente.
+oficial. Pacientes, Profissionais e Especialidades usam APIs Xano, enquanto
+Consultas ainda depende do catálogo SQLite até sua própria etapa de migração.
+Não foram
+copiados registros do SQLite para o Xano; Consultas continua vendo somente o
+catálogo local, sem sincronização com futuras alterações no Xano. Nenhuma nova
+funcionalidade SQLite deverá ser adicionada. Após migrar todos os módulos, uma
+etapa posterior removerá o serviço, a inicialização e as dependências SQLite.
+O arquivo `frontend/data/bontempo_demo.sqlite3` não é removido nem importado
+automaticamente.
 
 Consultas locais usam `America/Sao_Paulo` como fuso da interface e persistem
 instantes em UTC. Agendamentos e confirmações ocupam horário; intervalos

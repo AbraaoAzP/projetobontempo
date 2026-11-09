@@ -6,12 +6,13 @@ A tela atual de Especialidades permite cadastrar e listar registros no SQLite, e
 
 - Migrar o gerenciamento de Especialidades para a API HTTP do Xano: listar, consultar por identificador, cadastrar, editar e excluir, com validações, confirmação de exclusão e erros explícitos.
 - Reutilizar e preparar o cliente/serviços HTTP tipados existentes, sem criar um segundo transporte por página e sem fallback para SQLite quando a integração estiver indisponível.
-- Preservar a regra de nome não vazio e unicidade após trim e normalização sem distinção de caixa; impedir exclusão em cascata e tratar referências existentes conforme contrato confirmado.
+- Validar nome obrigatório, trim e duplicidade contra o catálogo carregado; apresentar erros do Xano sem presumir unicidade concorrente ou proteção referencial ainda não confirmadas.
 - Não copiar registros SQLite para o Xano nesta Change. Consultas continuará usando seu catálogo local e, temporariamente, não verá as alterações feitas no catálogo Xano; a convergência depende de Change posterior para Consultas.
-- Confirmar, por inventário somente de leitura autorizado, os campos, métodos, rotas, parâmetros, formatos de resposta, validações e controles de acesso de Especialidades antes de implementar chamadas ou contratos XanoScript. Os arquivos locais atuais não contêm esse contrato.
-- Como o inventário não encontrou tabelas relacionais para profissionais e consultas, o endpoint DELETE local será preparado em modo bloqueado e não removerá registros até que essas relações e a proteção referencial estejam implementadas e verificadas.
-- Manter o SQLite e sua inicialização enquanto Consultas depender dele. Não alterar `frontend/app.py`, não migrar dados automaticamente e não remover o arquivo de dados.
-- Manter a integração real desabilitada até a confirmação dos contratos, da configuração externa e da autorização para o ambiente de destino. Não alterar `v1 live`, não executar escritas remotas nem publicar XanoScript sem autorização explícita.
+- Integrar as rotas existentes informadas pelo usuário: GET/POST `/especialidade` e GET/PATCH/DELETE `/especialidade/{especialidade_id}`. Uma leitura real somente GET respondeu HTTP 200 com uma lista vazia.
+- Habilitar a integração real, sem autenticação nesta etapa, com flags externas de opt-out. A indicação `Public` não será tratada como prova de autorização segura; não alterar a configuração de segurança do Xano.
+- Antes de qualquer validação remota por POST, PATCH ou DELETE, apresentar o plano e obter autorização; usar somente registro fictício criado especificamente para esse teste e preservar registros preexistentes.
+- Manter o SQLite e sua inicialização enquanto Consultas depender dele. Não alterar `frontend/app.py`, Dashboard, Consultas, Prontuários ou outras Changes.
+- Não modificar nem publicar XanoScript, não alterar dados remotos sem a autorização indicada, não fazer push Git.
 
 **Fora do escopo:** login, separação de perfis Admin/Médico, vínculo de Especialidades com Profissionais, migração de Consultas, reconciliação automática de dados SQLite, remoção global do SQLite e publicação ou escrita no Xano nesta etapa.
 
@@ -29,6 +30,6 @@ A tela atual de Especialidades permite cadastrar e listar registros no SQLite, e
 
 - Frontend: `frontend/pages/3_Especialidades.py`; evolução do serviço em `frontend/services/`; testes automatizados e documentação de configuração do frontend.
 - SQLite: `frontend/services/database.py` continua atendendo Consultas e seus relacionamentos; sua inicialização e o banco local serão preservados nesta mudança.
-- Xano local: atualmente há schemas e APIs versionados para Pacientes, Profissionais e autenticação, mas não foram encontrados schema ou endpoints de Especialidades. Qualquer contrato local novo depende da confirmação do destino e da autorização explícita.
+- Xano: usar o grupo existente informado pelo usuário; nenhum script ou configuração de segurança do Xano é alterado por esta Change.
 - Dependências: reutilizar `requests` e os padrões de testes simulados já disponíveis; nenhuma dependência nova é prevista.
 - A Change `modelar-especialidades-consultas-xano` fornece contexto conceitual para o catálogo, mas também inclui Consultas e não implementa APIs nem CRUD. Esta Change separa a migração da interface e do serviço de Especialidades.
