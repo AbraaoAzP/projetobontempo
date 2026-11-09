@@ -30,8 +30,8 @@ A aplicação SHALL manter a navegação existente e disponibilizar o módulo de
 
 #### Scenario: Acessar as páginas sem autenticação ou integração
 
-- **WHEN** a pessoa inicia a aplicação e navega sem login e sem configuração ou habilitação da integração de Especialidades
-- **THEN** a navegação permanece disponível e a página de Especialidades informa a pendência sem enviar chamadas ou depender de respostas simuladas
+- **WHEN** a pessoa inicia a aplicação sem login e desabilita explicitamente a integração de Especialidades ou fornece uma URL base inválida
+- **THEN** a navegação permanece disponível, a página informa o estado de indisponibilidade e nenhuma chamada é enviada
 
 #### Scenario: Acessar a aplicação sem autenticação
 
@@ -74,7 +74,7 @@ A aplicação SHALL apresentar as páginas Início, Pacientes, Profissionais e E
 
 ### Requirement: Preservar limites funcionais e arquiteturais
 
-A interface SHALL NOT implementar login, autenticação ou separação Admin/Médico nesta mudança. O módulo Especialidades SHALL usar somente APIs Xano confirmadas, sem acesso direto ao banco e sem fallback SQLite. A mudança SHALL NOT migrar Consultas nem remover o serviço, a inicialização ou o arquivo SQLite enquanto esse módulo depender deles. A integração real SHALL permanecer condicionada à configuração e habilitação externas; nenhum segredo SHALL ser versionado.
+A interface SHALL NOT implementar login, autenticação ou separação Admin/Médico nesta mudança. O módulo Especialidades SHALL usar somente APIs Xano confirmadas, sem acesso direto ao banco e sem fallback SQLite. A mudança SHALL NOT migrar Consultas nem remover o serviço, a inicialização ou o arquivo SQLite enquanto esse módulo depender deles. A integração de Especialidades SHALL ficar habilitada por padrão para os endpoints informados e poderá ser desabilitada por flags externas; a base URL poderá ser sobrescrita externamente e nenhum segredo SHALL ser versionado.
 
 #### Scenario: Verificar ausência de integrações e operações
 

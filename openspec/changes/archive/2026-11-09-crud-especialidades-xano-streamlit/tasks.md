@@ -23,7 +23,7 @@
 - [x] 4.2 Atualizar a documentação com o contrato informado, o resultado do GET real, os limites de autorização e os controles de configuração.
 - [x] 4.3 Executar a suíte completa de testes, validar OpenSpec strict, revisar `git diff --check` e verificar que os testes não fizeram mutações remotas nem alteraram arquivos fora do escopo. Resultado: 72 testes passaram; OpenSpec strict válido; `git diff --check` sem erros. Os testes usam mocks e não enviaram mutações remotas.
 - [x] 4.4 Apresentar o plano de POST, PATCH e DELETE usando somente uma especialidade sintética criada para o teste; aguardar autorização explícita antes de executar as mutações. O usuário autorizou em 2026-11-09. POST, PATCH e DELETE foram executados somente no registro criado para o teste, e o GET final confirmou sua remoção. Nenhum registro preexistente foi alterado.
-- [ ] 4.5 Após as validações autorizadas, revisar e fazer commit seletivo somente dos arquivos desta Change; arquivar em commit separado somente quando todos os critérios estiverem concluídos.
+- [x] 4.5 Após as validações autorizadas, revisar e fazer commit seletivo somente dos arquivos desta Change; arquivar em commit separado somente quando todos os critérios estiverem concluídos. Commit local seletivo criado: `13332e3 feat(especialidades): integra CRUD com Xano`; sem push.
 
 ## Limites confirmados
 

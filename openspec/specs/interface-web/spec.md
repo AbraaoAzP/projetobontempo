@@ -31,9 +31,9 @@ A aplicação SHALL manter Início, Pacientes, Profissionais, Especialidades e C
 
 ### Requirement: Respeitar a integração frontend-backend
 
-O frontend SHALL obter dados do sistema por meio das APIs HTTP existentes do Xano e SHALL NOT acessar diretamente o banco de dados do Xano.
+O frontend SHALL obter dados do sistema por meio das APIs HTTP existentes do Xano e SHALL NOT acessar diretamente o banco de dados do Xano. Para Pacientes e Profissionais, SHALL usar somente endpoints confirmados. Para Especialidades, SHALL usar somente as rotas informadas e autorizadas pelo usuário: GET/POST `/especialidade` e GET/PATCH/DELETE `/especialidade/{especialidade_id}`.
 
-O frontend SHALL utilizar somente endpoints confirmados e correspondentes às capacidades existentes de pacientes e profissionais. Esta Change não SHALL introduzir operações de agendamento ou disponibilidade.
+Esta Change não SHALL introduzir operações de agendamento ou disponibilidade.
 
 #### Scenario: Consultar dados de uma capacidade existente
 
@@ -44,6 +44,16 @@ O frontend SHALL utilizar somente endpoints confirmados e correspondentes às ca
 
 - **WHEN** uma operação solicitada não possui endpoint Xano existente e confirmado
 - **THEN** o frontend não inventa nem chama uma rota presumida para essa operação
+
+#### Scenario: Consultar ou alterar Especialidades
+
+- **WHEN** a página de Especialidades executa uma operação habilitada
+- **THEN** ela usa uma API HTTP Xano confirmada, sem conexão direta ao banco de dados e sem recorrer ao SQLite como fallback
+
+#### Scenario: Não há contrato confirmado para uma operação
+
+- **WHEN** uma operação de Especialidades não possui contrato confirmado
+- **THEN** o frontend não presume nem chama uma rota e informa que a integração está pendente
 
 ### Requirement: Manter configuração e credenciais fora do código versionado
 
@@ -112,7 +122,7 @@ As páginas Pacientes e Profissionais SHALL apresentar o título correspondente 
 
 ### Requirement: Preservar o escopo funcional da interface
 
-A interface SHALL oferecer a página Início como dashboard administrativo e manter a navegação para Pacientes, Profissionais, Especialidades e Consultas existentes. Esta mudança SHALL NOT implementar prontuários, autenticação ou autorização fictícias, nem SHALL habilitar publicação ou alteração de dados no Xano. A apresentação de indicadores SHALL respeitar os requisitos de origem e indisponibilidade definidos para o dashboard administrativo.
+A interface SHALL oferecer a página Início como dashboard administrativo e manter a navegação para Pacientes, Profissionais, Especialidades e Consultas existentes. A página Especialidades SHALL oferecer o CRUD definido pela capability `especialidades` nas APIs existentes e autorizadas. Esta mudança SHALL NOT implementar prontuários, login, autenticação ou separação de perfis Admin/Médico, migrar Consultas, remover o SQLite globalmente, alterar contratos de Pacientes ou Profissionais, alterar segurança do Xano ou publicar scripts. A apresentação de indicadores SHALL respeitar os requisitos de origem e indisponibilidade definidos para o dashboard administrativo.
 
 #### Scenario: Acessar a aplicação sem autenticação
 
@@ -121,8 +131,8 @@ A interface SHALL oferecer a página Início como dashboard administrativo e man
 
 #### Scenario: Acessar as páginas sem autenticação ou integração
 
-- **WHEN** a pessoa inicia a aplicação e navega sem login e sem integração Xano configurada
-- **THEN** a página inicial e os módulos existentes ficam acessíveis sem chamadas HTTP ao Xano, e os dados locais são identificados como tais
+- **WHEN** a pessoa inicia a aplicação sem login e desabilita explicitamente a integração de Especialidades ou fornece uma URL base inválida
+- **THEN** a navegação permanece disponível, a página informa o estado de indisponibilidade e nenhuma chamada é enviada
 
 #### Scenario: Conferir o escopo do dashboard
 
@@ -132,16 +142,31 @@ A interface SHALL oferecer a página Início como dashboard administrativo e man
 #### Scenario: Conferir o escopo das páginas
 
 - **WHEN** a pessoa utiliza a navegação da aplicação
-- **THEN** Início, Pacientes, Profissionais, Especialidades e Consultas estão disponíveis sem prontuário, autenticação improvisada ou operações Xano não autorizadas
+- **THEN** Início, Pacientes, Profissionais, Especialidades e Consultas estão disponíveis; Especialidades oferece somente o CRUD especificado por APIs autorizadas, sem prontuário, autenticação improvisada, migração de Consultas ou operações remotas não autorizadas
+
+#### Scenario: Acessar o módulo de Especialidades
+
+- **WHEN** a pessoa seleciona Especialidades na navegação
+- **THEN** a aplicação apresenta a página do módulo e oferece as operações definidas pela capability `especialidades`, respeitando configuração e disponibilidade do contrato Xano
+
+#### Scenario: Preservar limites de escopo
+
+- **WHEN** a funcionalidade de Especialidades é integrada
+- **THEN** a aplicação não exige login, não separa perfis Admin/Médico, não migra Consultas e mantém a infraestrutura SQLite ainda necessária a esse módulo
 
 ### Requirement: Apresentar identidade visual Bontempo consistente
 
-A aplicação SHALL apresentar as páginas Início, Pacientes e Profissionais com cabeçalhos, ícones, hierarquia tipográfica e espaçamentos consistentes, adequados à visualização em notebook e navegador, sem alterar a navegação existente.
+A aplicação SHALL apresentar as páginas Início, Pacientes, Profissionais e Especialidades com cabeçalhos, ícones, hierarquia tipográfica e espaçamentos consistentes, adequados à visualização em notebook e navegador, sem alterar a navegação existente.
+
+#### Scenario: Navegar até Especialidades
+
+- **WHEN** a pessoa abre a página Especialidades
+- **THEN** ela mantém a identidade visual comum da aplicação e as opções de navegação preexistentes continuam disponíveis
 
 #### Scenario: Navegar pelas páginas existentes
 
-- **WHEN** a pessoa abre Início, Pacientes ou Profissionais
-- **THEN** cada página mantém a identidade visual comum e a navegação continua oferecendo somente essas três páginas
+- **WHEN** a pessoa abre Início, Pacientes, Profissionais ou Especialidades
+- **THEN** cada página mantém a identidade visual comum e a navegação preexistente continua disponível
 
 ### Requirement: Navegar pelos cards da página Início
 
@@ -201,9 +226,19 @@ A página SHALL NOT apresentar registros de profissionais nem realizar chamadas 
 
 ### Requirement: Preservar limites funcionais e arquiteturais
 
-A interface SHALL NOT implementar login ou autenticação, apresentar dados fictícios, adicionar dependências, nem alterar backend, tabelas ou arquivos XanoScript. O dashboard SHALL realizar somente requisições GET às APIs Xano existentes de Pacientes e Profissionais sob as condições de configuração e autorização definidas para seus indicadores, e SHALL manter Consultas como dados SQLite locais. O frontend SHALL NOT acessar diretamente o banco de dados do Xano.
+A interface SHALL NOT implementar login, autenticação ou separação Admin/Médico, apresentar dados fictícios, adicionar dependências, nem alterar backend, tabelas, arquivos XanoScript ou configurações de segurança. O dashboard SHALL realizar somente requisições GET às APIs Xano existentes de Pacientes e Profissionais sob as condições de configuração e autorização definidas para seus indicadores, e SHALL manter Consultas como dados SQLite locais. A página Especialidades SHALL usar somente o CRUD definido por suas APIs existentes e autorizadas, sem acesso direto ao banco e sem fallback SQLite. A integração de Especialidades SHALL ficar habilitada por padrão para os endpoints informados e poderá ser desabilitada por flags externas; a base URL poderá ser sobrescrita externamente e nenhum segredo SHALL ser versionado. O frontend SHALL NOT acessar diretamente o banco de dados do Xano.
 
 #### Scenario: Verificar ausência de integrações e operações
 
 - **WHEN** a pessoa navega pelas páginas disponíveis
-- **THEN** a aplicação não exige autenticação improvisada, não exibe dados inventados nem oferece operações remotas habilitadas sem autorização; sem configuração Xano suficiente, o dashboard não realiza requisições HTTP
+- **THEN** a aplicação não exige autenticação improvisada, não exibe dados inventados nem oferece operações remotas fora do CRUD autorizado de Especialidades; sem configuração suficiente, o dashboard não realiza requisições HTTP
+
+#### Scenario: Verificar limites da integração
+
+- **WHEN** a pessoa navega ou executa operações no módulo Especialidades
+- **THEN** não há login ou perfil de acesso implementado, as chamadas usam somente contrato confirmado e falhas não são simuladas como sucesso
+
+#### Scenario: Preservar a dependência SQLite de Consultas
+
+- **WHEN** a página Especialidades passa a usar o Xano
+- **THEN** a infraestrutura SQLite usada por Consultas permanece sem remoção ou migração nesta mudança
