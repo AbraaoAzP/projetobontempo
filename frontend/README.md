@@ -62,6 +62,40 @@ validada no ambiente Xano; nenhum endpoint remoto foi alterado nesta etapa.
 Os testes automatizados substituem o cliente por mocks ou usam transporte
 simulado; nenhuma requisição real ao Xano é feita pela suíte.
 
+### Especialidades
+
+Em 2026-11-09, o usuário informou o contrato parcial publicado:
+
+- Base URL: `https://x8ki-letl-twmt.n7.xano.io/api:Cv9TB_MS`
+- GET/POST da coleção: `/especialidade`
+- GET/PATCH/DELETE por ID: `/especialidade/{especialidade_id}`
+- Campos da tabela: `id` (integer), `created_at` (timestamp), `nome` (text)
+
+Essa informação ainda não foi verificada por leitura do schema publicado. Os
+scripts XanoScript locais são propostas e diferem desse contrato: usam
+`/especialidades` na coleção, omitem `created_at` e não possuem DELETE. Não
+recriar nem publicar esses scripts para substituir os endpoints informados.
+Os campos de entrada das APIs, formatos de response, erros, unicidade,
+referências e comportamento de DELETE continuam desconhecidos; não inferir
+envelopes nem que a exclusão seja segura.
+
+Os endpoints aparecem como `Public`, mas a política efetiva de autorização e
+quaisquer restrições adicionais não foram confirmadas. A página somente faz
+GET quando `XANO_ESPECIALIDADES_API_ENABLED=true`; a flag é específica deste
+módulo e fica desligada por padrão. `XANO_ESPECIALIDADES_BASE_URL` pode
+sobrescrever a URL informada. Antes de habilitar leitura, confirme o ambiente e
+o escopo dos dados expostos. A página apresenta o corpo bruto sem interpretar
+ou presumir seu formato. O cliente prepara gravações com o único campo conhecido
+da tabela (`nome`), sem que isso confirme o schema de entrada das APIs. As
+operações POST/PATCH/DELETE também exigem
+`XANO_ESPECIALIDADES_WRITE_ENABLED=true`, que não deve ser configurada antes de
+confirmar os controles de autorização; a interface ainda não oferece essas
+ações. Nenhum GET real, escrita remota ou publicação foi realizada nesta etapa.
+
+Consultas continua usando o catálogo SQLite local; não há sincronização com o
+catálogo Xano. Especialidades não usa SQLite como fallback e esta integração
+não remove nem altera o banco local.
+
 ### Validação real de leitura
 
 Em 2026-10-27, foi feita uma validação manual somente de leitura no ambiente

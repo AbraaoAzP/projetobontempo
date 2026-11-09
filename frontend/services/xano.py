@@ -10,17 +10,24 @@ import requests
 
 XANO_PACIENTES_BASE_URL_ENV = "XANO_PACIENTES_BASE_URL"
 XANO_PROFISSIONAIS_BASE_URL_ENV = "XANO_PROFISSIONAIS_BASE_URL"
+XANO_ESPECIALIDADES_BASE_URL_ENV = "XANO_ESPECIALIDADES_BASE_URL"
 XANO_AUTHORIZATION_ENV = "XANO_AUTHORIZATION"
 XANO_API_ENABLED_ENV = "XANO_API_ENABLED"
+XANO_ESPECIALIDADES_API_ENABLED_ENV = "XANO_ESPECIALIDADES_API_ENABLED"
+XANO_ESPECIALIDADES_WRITE_ENABLED_ENV = "XANO_ESPECIALIDADES_WRITE_ENABLED"
 DEFAULT_PACIENTES_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:consultorio-cadastro-pacientes"
 )
 DEFAULT_PROFISSIONAIS_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:consultorio-cadastro-profissionais"
 )
+DEFAULT_ESPECIALIDADES_BASE_URL = (
+    "https://x8ki-letl-twmt.n7.xano.io/api:Cv9TB_MS"
+)
 REQUEST_TIMEOUT_SECONDS = 5
 
 ResourceName = Literal["pacientes", "profissionais"]
+XanoResourceName = Literal["pacientes", "profissionais", "especialidades"]
 
 RESOURCE_FIELDS: dict[ResourceName, tuple[str, ...]] = {
     "pacientes": ("id", "nome", "telefone", "email"),
@@ -35,6 +42,20 @@ OPTIONAL_RESOURCE_FIELDS = frozenset({"telefone", "email", "especialidade"})
 
 def api_enabled() -> bool:
     return os.getenv(XANO_API_ENABLED_ENV, "").strip().lower() == "true"
+
+
+def specialties_api_enabled() -> bool:
+    return (
+        os.getenv(XANO_ESPECIALIDADES_API_ENABLED_ENV, "").strip().lower()
+        == "true"
+    )
+
+
+def specialties_write_enabled() -> bool:
+    return (
+        os.getenv(XANO_ESPECIALIDADES_WRITE_ENABLED_ENV, "").strip().lower()
+        == "true"
+    )
 
 
 class XanoError(Exception):
@@ -94,6 +115,8 @@ class XanoSettings:
     patients: ResourceEndpoints = ResourceEndpoints()
     professionals: ResourceEndpoints = ResourceEndpoints()
     authorization: str | None = None
+    specialties_base_url: str | None = DEFAULT_ESPECIALIDADES_BASE_URL
+    specialties: ResourceEndpoints = ResourceEndpoints()
 
     @classmethod
     def from_environment(cls) -> XanoSettings:
@@ -104,6 +127,10 @@ class XanoSettings:
             professionals_base_url=os.getenv(
                 XANO_PROFISSIONAIS_BASE_URL_ENV,
                 DEFAULT_PROFISSIONAIS_BASE_URL,
+            ),
+            specialties_base_url=os.getenv(
+                XANO_ESPECIALIDADES_BASE_URL_ENV,
+                DEFAULT_ESPECIALIDADES_BASE_URL,
             ),
             patients=_endpoints_from_environment(
                 "PACIENTES",
@@ -127,21 +154,36 @@ class XanoSettings:
                     identifier_parameter="profissional_id",
                 ),
             ),
+            specialties=_endpoints_from_environment(
+                "ESPECIALIDADES",
+                ResourceEndpoints(
+                    collection_path="especialidade",
+                    item_path="especialidade/{especialidade_id}",
+                    create_path="especialidade",
+                    update_path="especialidade/{especialidade_id}",
+                    delete_path="especialidade/{especialidade_id}",
+                    identifier_parameter="especialidade_id",
+                ),
+            ),
             authorization=os.getenv(XANO_AUTHORIZATION_ENV),
         )
 
-    def endpoints_for(self, resource: ResourceName) -> ResourceEndpoints:
+    def endpoints_for(self, resource: XanoResourceName) -> ResourceEndpoints:
         if resource == "pacientes":
             return self.patients
         if resource == "profissionais":
             return self.professionals
+        if resource == "especialidades":
+            return self.specialties
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
-    def base_url_for(self, resource: ResourceName) -> str | None:
+    def base_url_for(self, resource: XanoResourceName) -> str | None:
         if resource == "pacientes":
             return self.patients_base_url
         if resource == "profissionais":
             return self.professionals_base_url
+        if resource == "especialidades":
+            return self.specialties_base_url
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
 
@@ -226,18 +268,70 @@ class XanoClient:
                 "A resposta de exclusão do Xano não confirmou o sucesso."
             )
 
+    def list_specialties(self) -> requests.Response:
+        endpoints = self._settings.endpoints_for("especialidades")
+        return self._send(
+            "especialidades", "GET", endpoints.collection_path
+        )
+
+    def get_specialty(self, specialty_id: int) -> requests.Response:
+        endpoints = self._settings.endpoints_for("especialidades")
+        path = _format_item_path(
+            endpoints.item_path,
+            specialty_id,
+            endpoints.identifier_parameter,
+        )
+        return self._send("especialidades", "GET", path)
+
+    def create_specialty(
+        self, payload: Mapping[str, Any]
+    ) -> requests.Response:
+        endpoints = self._settings.endpoints_for("especialidades")
+        clean_payload = _validate_specialty_payload(payload, require_name=True)
+        _require_specialty_writes_enabled()
+        return self._send(
+            "especialidades", "POST", endpoints.create_path, clean_payload
+        )
+
+    def update_specialty(
+        self, specialty_id: int, payload: Mapping[str, Any]
+    ) -> requests.Response:
+        endpoints = self._settings.endpoints_for("especialidades")
+        path = _format_item_path(
+            endpoints.update_path,
+            specialty_id,
+            endpoints.identifier_parameter,
+        )
+        clean_payload = _validate_specialty_payload(
+            payload, require_name=False
+        )
+        _require_specialty_writes_enabled()
+        return self._send(
+            "especialidades", "PATCH", path, clean_payload
+        )
+
+    def delete_specialty(self, specialty_id: int) -> requests.Response:
+        _require_specialty_writes_enabled()
+        endpoints = self._settings.endpoints_for("especialidades")
+        path = _format_item_path(
+            endpoints.delete_path,
+            specialty_id,
+            endpoints.identifier_parameter,
+        )
+        return self._send("especialidades", "DELETE", path)
+
     def _send(
         self,
-        resource: ResourceName,
+        resource: XanoResourceName,
         method: str,
         path: str | None,
         payload: Mapping[str, Any] | None = None,
     ) -> requests.Response:
-        base_url_env = (
-            XANO_PACIENTES_BASE_URL_ENV
-            if resource == "pacientes"
-            else XANO_PROFISSIONAIS_BASE_URL_ENV
-        )
+        base_url_env = {
+            "pacientes": XANO_PACIENTES_BASE_URL_ENV,
+            "profissionais": XANO_PROFISSIONAIS_BASE_URL_ENV,
+            "especialidades": XANO_ESPECIALIDADES_BASE_URL_ENV,
+        }[resource]
         url = _build_url(
             self._settings.base_url_for(resource), path, base_url_env
         )
@@ -364,6 +458,35 @@ def _validate_payload(
         if field in OPTIONAL_RESOURCE_FIELDS and value is not None and not isinstance(value, str):
             raise XanoResponseError(f"O campo {field} deve ser texto ou nulo.")
     return clean_payload
+
+
+def _validate_specialty_payload(
+    payload: Mapping[str, Any],
+    *,
+    require_name: bool,
+) -> dict[str, str]:
+    if not isinstance(payload, Mapping):
+        raise XanoResponseError("Os dados enviados precisam ser um objeto.")
+    if set(payload).difference({"nome"}):
+        raise XanoResponseError("Os dados enviados contêm campos não permitidos.")
+
+    if require_name and "nome" not in payload:
+        raise XanoResponseError("O campo nome é obrigatório.")
+    if "nome" not in payload:
+        return {}
+
+    name = payload["nome"]
+    if not isinstance(name, str) or not name.strip():
+        raise XanoResponseError("O campo nome deve conter texto não vazio.")
+    return {"nome": name.strip()}
+
+
+def _require_specialty_writes_enabled() -> None:
+    if not specialties_write_enabled():
+        raise XanoConfigurationError(
+            "As gravações de Especialidades estão desabilitadas até a "
+            "confirmação dos controles de autorização."
+        )
 
 
 def _parse_json(response: requests.Response) -> Any:

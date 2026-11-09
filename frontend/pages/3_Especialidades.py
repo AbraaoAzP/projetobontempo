@@ -1,45 +1,45 @@
 import streamlit as st
 
-from services import database
+from services.xano import (
+    XanoClient,
+    XanoError,
+    XanoSettings,
+    specialties_api_enabled,
+)
 from ui import apply_styles, show_page_header
 
 
 apply_styles()
 show_page_header(
     "Especialidades",
-    "Cadastre especialidades médicas para vinculá-las a um ou mais profissionais.",
+    "Consulta o catálogo Xano; gravações aguardam verificação de autorização.",
     ":material/medical_information:",
 )
 
-with st.form("cadastro_especialidade", clear_on_submit=True):
-    st.caption("* Campo obrigatório.")
-    nome = st.text_input(
-        "Especialidade *",
-        placeholder="Digite o nome da especialidade",
-        label_visibility="visible",
-    )
-    cadastrar = st.form_submit_button(
-        "Cadastrar especialidade",
-        type="primary",
-        icon=":material/add:",
-    )
-
-if cadastrar:
+if specialties_api_enabled():
+    client = XanoClient(XanoSettings.from_environment())
     try:
-        database.create_specialty(nome)
-        st.success("Especialidade cadastrada.")
-        st.rerun()
-    except database.ValidationError as error:
-        st.error(str(error))
-    except database.DuplicateSpecialtyError as error:
-        st.warning(str(error))
-    except database.DatabaseError as error:
-        st.error(f"Não foi possível salvar a especialidade: {error}")
-
-st.divider()
-st.subheader("Especialidades cadastradas")
-especialidades = database.list_specialties()
-if especialidades:
-    st.dataframe(especialidades, hide_index=True, use_container_width=True)
+        response = client.list_specialties()
+    except XanoError as error:
+        st.error(f"Não foi possível consultar Especialidades no Xano: {error}")
+    else:
+        st.subheader("Resposta da API")
+        st.caption(
+            "Corpo bruto temporário; nenhum formato de resposta foi presumido."
+        )
+        st.code(response.text, language="json")
 else:
-    st.info("Nenhuma especialidade cadastrada neste banco SQLite local.")
+    st.info(
+        "A leitura do catálogo Xano está desabilitada. Defina "
+        "XANO_ESPECIALIDADES_API_ENABLED=true somente após confirmar o "
+        "destino e a política de acesso."
+    )
+
+st.caption(
+    "Cadastro, edição e exclusão permanecem indisponíveis até confirmar os "
+    "formatos de resposta, as regras de validação e os controles de autorização."
+)
+st.warning(
+    "Consultas continua usando o catálogo SQLite local. Este módulo não consulta "
+    "nem atualiza esse catálogo, e não há sincronização com o Xano."
+)

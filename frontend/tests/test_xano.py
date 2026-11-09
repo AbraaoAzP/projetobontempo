@@ -5,10 +5,14 @@ from unittest.mock import Mock, patch
 import requests
 
 from services.xano import (
+    DEFAULT_ESPECIALIDADES_BASE_URL,
     DEFAULT_PACIENTES_BASE_URL,
     DEFAULT_PROFISSIONAIS_BASE_URL,
     REQUEST_TIMEOUT_SECONDS,
     XANO_API_ENABLED_ENV,
+    XANO_ESPECIALIDADES_API_ENABLED_ENV,
+    XANO_ESPECIALIDADES_BASE_URL_ENV,
+    XANO_ESPECIALIDADES_WRITE_ENABLED_ENV,
     XANO_PACIENTES_BASE_URL_ENV,
     XANO_PROFISSIONAIS_BASE_URL_ENV,
     ResourceEndpoints,
@@ -21,6 +25,8 @@ from services.xano import (
     XanoTimeoutError,
     XanoTransportError,
     api_enabled,
+    specialties_api_enabled,
+    specialties_write_enabled,
 )
 
 
@@ -47,6 +53,14 @@ class TestXanoClient(unittest.TestCase):
                 update_path="profissional/{profissional_id}",
                 delete_path="profissional/{profissional_id}",
                 identifier_parameter="profissional_id",
+            ),
+            specialties=ResourceEndpoints(
+                collection_path="especialidade",
+                item_path="especialidade/{especialidade_id}",
+                create_path="especialidade",
+                update_path="especialidade/{especialidade_id}",
+                delete_path="especialidade/{especialidade_id}",
+                identifier_parameter="especialidade_id",
             ),
         )
         self.client = XanoClient(self.settings, self.transport)
@@ -292,6 +306,144 @@ class TestXanoClient(unittest.TestCase):
             "https://custom.example.invalid/api:custom/profissionais",
         )
         self.assertEqual(settings.patients_base_url, "")
+
+    def test_specialty_routes_use_singular_paths_and_keep_json_unmodified(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            settings = XanoSettings.from_environment()
+
+        self.assertEqual(
+            settings.specialties_base_url, DEFAULT_ESPECIALIDADES_BASE_URL
+        )
+        self.assertEqual(settings.specialties.collection_path, "especialidade")
+        self.assertEqual(
+            settings.specialties.item_path,
+            "especialidade/{especialidade_id}",
+        )
+
+        list_response = self._response(
+            {"items": [{"id": 7, "created_at": "timestamp", "nome": "Fictícia"}]}
+        )
+        item_response = self._response(
+            {"data": {"id": 7, "created_at": "timestamp", "nome": "Fictícia"}}
+        )
+        create_response = self._response({"result": "created"})
+        update_response = self._response({"result": "updated"})
+        delete_response = Mock(status_code=204)
+        self.transport.request.side_effect = [
+            list_response,
+            item_response,
+            create_response,
+            update_response,
+            delete_response,
+        ]
+        client = XanoClient(settings, self.transport)
+
+        self.assertIs(client.list_specialties(), list_response)
+        self.assertIs(client.get_specialty(7), item_response)
+        with patch.dict(
+            os.environ,
+            {XANO_ESPECIALIDADES_WRITE_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            self.assertIs(
+                client.create_specialty({"nome": "  Fictícia  "}),
+                create_response,
+            )
+            self.assertIs(
+                client.update_specialty(7, {"nome": "Outra fictícia"}),
+                update_response,
+            )
+            self.assertIs(client.delete_specialty(7), delete_response)
+
+        calls = self.transport.request.call_args_list
+        self.assertEqual(
+            [call.args[0] for call in calls],
+            ["GET", "GET", "POST", "PATCH", "DELETE"],
+        )
+        self.assertEqual(
+            [call.args[1] for call in calls],
+            [
+                f"{DEFAULT_ESPECIALIDADES_BASE_URL}/especialidade",
+                f"{DEFAULT_ESPECIALIDADES_BASE_URL}/especialidade/7",
+                f"{DEFAULT_ESPECIALIDADES_BASE_URL}/especialidade",
+                f"{DEFAULT_ESPECIALIDADES_BASE_URL}/especialidade/7",
+                f"{DEFAULT_ESPECIALIDADES_BASE_URL}/especialidade/7",
+            ],
+        )
+        self.assertEqual(calls[2].kwargs["json"], {"nome": "Fictícia"})
+        self.assertEqual(calls[3].kwargs["json"], {"nome": "Outra fictícia"})
+        self.assertTrue(
+            all(
+                call.kwargs["timeout"] == REQUEST_TIMEOUT_SECONDS
+                for call in calls
+            )
+        )
+
+    def test_specialty_payload_validation_blocks_invalid_requests(self) -> None:
+        with self.assertRaises(XanoResponseError):
+            self.client.create_specialty({"nome": "  "})
+        with self.assertRaises(XanoResponseError):
+            self.client.create_specialty({"nome": "Fictícia", "id": 7})
+        with self.assertRaises(XanoResponseError):
+            self.client.update_specialty(7, {"nome": 123})
+        self.transport.request.assert_not_called()
+
+    def test_specialty_writes_are_disabled_by_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(specialties_write_enabled())
+            with self.assertRaises(XanoConfigurationError):
+                self.client.create_specialty({"nome": "Fictícia"})
+            with self.assertRaises(XanoConfigurationError):
+                self.client.update_specialty(7, {"nome": "Fictícia"})
+            with self.assertRaises(XanoConfigurationError):
+                self.client.delete_specialty(7)
+        self.transport.request.assert_not_called()
+
+    def test_specialty_api_has_an_independent_read_gate(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                XANO_API_ENABLED_ENV: "true",
+                XANO_ESPECIALIDADES_API_ENABLED_ENV: "false",
+            },
+            clear=True,
+        ):
+            self.assertFalse(specialties_api_enabled())
+
+        with patch.dict(
+            os.environ,
+            {XANO_ESPECIALIDADES_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            self.assertTrue(specialties_api_enabled())
+
+    def test_specialty_base_url_can_be_overridden_and_empty_fails_closed(self) -> None:
+        custom_url = "https://specialties.example.invalid/api:custom"
+        with patch.dict(
+            os.environ,
+            {XANO_ESPECIALIDADES_BASE_URL_ENV: custom_url},
+            clear=True,
+        ):
+            settings = XanoSettings.from_environment()
+            client = XanoClient(settings, self.transport)
+            self.transport.request.return_value = self._response([])
+
+            response = client.list_specialties()
+
+        self.assertEqual(response.json.return_value, [])
+        self.assertEqual(
+            self.transport.request.call_args.args[1],
+            f"{custom_url}/especialidade",
+        )
+
+        with patch.dict(
+            os.environ, {XANO_ESPECIALIDADES_BASE_URL_ENV: ""}, clear=True
+        ):
+            client = XanoClient(XanoSettings.from_environment(), self.transport)
+            with self.assertRaises(XanoConfigurationError):
+                client.list_specialties()
+
+        self.transport.request.assert_called_once()
 
     def test_api_is_disabled_unless_explicitly_enabled(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
