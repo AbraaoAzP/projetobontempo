@@ -31,7 +31,27 @@ As chamadas a APIs SHALL depender de configuração externa válida e usar somen
 - **WHEN** uma pessoa navega pelas páginas existentes sem login ou sem configuração válida do Xano
 - **THEN** a navegação permanece disponível, nenhuma chamada remota é executada sem configuração e a interface informa quando uma operação depende da integração
 
+#### Scenario: Acessar a aplicação sem autenticação
+
+- **WHEN** a pessoa inicia a aplicação sem autenticação configurada
+- **THEN** a interface não afirma que há autenticação ou controle de acesso e não apresenta nomes ou observações clínicas das próximas consultas no dashboard
+
+#### Scenario: Conferir o escopo do dashboard
+
+- **WHEN** a pessoa utiliza o dashboard
+- **THEN** pode consultar os indicadores locais identificados e navegar pelos módulos existentes, sem acessar um prontuário ou operação remota não autorizada
+
 #### Scenario: Conferir o escopo das páginas
 
 - **WHEN** esta mudança é implementada
 - **THEN** somente Pacientes e Profissionais passam a oferecer CRUD via Xano, sem habilitar prontuários, consultas remotas, disponibilidade ou gerenciamento de usuários
+
+#### Scenario: Acessar o módulo de Especialidades
+
+- **WHEN** a pessoa seleciona Especialidades na navegação
+- **THEN** a aplicação apresenta a página do módulo e oferece as operações definidas pela capability `especialidades`, respeitando configuração e disponibilidade do contrato Xano
+
+#### Scenario: Preservar limites de escopo
+
+- **WHEN** a funcionalidade de Especialidades é integrada
+- **THEN** a aplicação não exige login, não separa perfis Admin/Médico, não migra Consultas e mantém a infraestrutura SQLite ainda necessária a esse módulo
