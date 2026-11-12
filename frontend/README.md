@@ -101,9 +101,34 @@ Os scripts XanoScript locais são propostas que diferem do grupo informado:
 usam `/especialidades` na coleção, omitem `created_at` e não possuem DELETE.
 Eles permanecem intocados e não serão publicados nesta Change.
 
-Consultas continua usando o catálogo SQLite local; não há sincronização com o
-catálogo Xano. Especialidades não usa SQLite como fallback e esta integração
-não remove nem altera o banco local.
+### Consulta e Status da Consulta (integração em andamento)
+
+O cliente Xano possui operações para ler a coleção de Consultas e o catálogo de
+Status, além da estrutura de POST, PATCH e DELETE de Consultas conforme os
+inputs confirmados no painel. `XANO_CONSULTAS_BASE_URL` e
+`XANO_STATUS_CONSULTA_BASE_URL` devem receber externamente as bases dos grupos
+Xano correspondentes. Não há fallback de URL para essas APIs.
+
+Leituras permanecem desabilitadas até `XANO_CONSULTAS_API_ENABLED=true` e
+`XANO_STATUS_CONSULTA_API_ENABLED=true`, respectivamente. A tabela remota
+confirma as referências inteiras não nulas (com padrão `0`), o timestamp Unix
+em milissegundos não nulo e `observacoes` como texto anulável. O cliente oferece
+GET da coleção e por ID, valida os campos confirmados e converte a data/hora
+para `America/Sao_Paulo`. A página carrega catálogos Xano, oferece formulários
+preparatórios e lista registros por seus IDs e status. Opções com ID `0` não
+são oferecidas.
+
+As ações POST, PATCH e DELETE na página permanecem desabilitadas até a validação
+final. Ainda não estão confirmadas a relação Profissional–Especialidade, a
+semântica de nulo/vazio nos filtros PATCH nem garantias do backend sobre
+referências e conflitos; o contrato de Consulta informa somente um instante,
+sem término/duração. O cliente preserva chaves ausentes distintas de
+`observacoes: null` e exige referências positivas nos payloads.
+
+Na página Consultas, habilitar qualquer flag de leitura ativa uma interface
+Xano exclusiva; se ambas estiverem desabilitadas, o CRUD SQLite legado continua
+disponível. Uma falha do Xano não causa fallback. Dashboard e dados SQLite
+permanecem inalterados.
 
 ### Validação real de leitura
 

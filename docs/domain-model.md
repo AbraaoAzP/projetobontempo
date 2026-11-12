@@ -110,6 +110,8 @@ Representa uma especialidade médica catalogada e reutilizável. Médicos e espe
 
 O campo textual legado de especialidade em Profissional deve ser preservado até que a reconciliação com o catálogo seja especificada e aprovada.
 
+O schema Xano observado ainda representa `profissional.especialidade` como texto opcional, não como vínculo com o catálogo. Para implementar a cardinalidade N:N, uma mudança futura deverá migrar esse dado de forma planejada para uma tabela intermediária de associação Profissional–Especialidade, após definir a reconciliação dos valores textuais existentes. Essa migração não faz parte da integração de Consultas e não autoriza alterar ou excluir o campo ou os dados atuais nesta etapa.
+
 ---
 
 ## 7. Consulta
