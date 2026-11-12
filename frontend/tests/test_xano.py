@@ -1,6 +1,8 @@
 import os
 import unittest
-from unittest.mock import Mock, patch
+from datetime import date, datetime, time
+from unittest.mock import Mock, call, patch
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -10,11 +12,16 @@ from services.xano import (
     DEFAULT_PROFISSIONAIS_BASE_URL,
     REQUEST_TIMEOUT_SECONDS,
     XANO_API_ENABLED_ENV,
+    XANO_CONSULTAS_API_ENABLED_ENV,
+    XANO_CONSULTAS_BASE_URL_ENV,
+    XANO_CONSULTAS_WRITE_ENABLED_ENV,
     XANO_ESPECIALIDADES_API_ENABLED_ENV,
     XANO_ESPECIALIDADES_BASE_URL_ENV,
     XANO_ESPECIALIDADES_WRITE_ENABLED_ENV,
     XANO_PACIENTES_BASE_URL_ENV,
     XANO_PROFISSIONAIS_BASE_URL_ENV,
+    XANO_STATUS_CONSULTA_API_ENABLED_ENV,
+    XANO_STATUS_CONSULTA_BASE_URL_ENV,
     ResourceEndpoints,
     XanoClient,
     XanoConfigurationError,
@@ -25,6 +32,11 @@ from services.xano import (
     XanoTimeoutError,
     XanoTransportError,
     api_enabled,
+    consultation_status_api_enabled,
+    consultation_datetime_to_unix_ms,
+    consultation_timestamp_to_local_datetime,
+    consultations_api_enabled,
+    consultations_write_enabled,
     specialties_api_enabled,
     specialties_write_enabled,
 )
@@ -62,6 +74,12 @@ class TestXanoClient(unittest.TestCase):
                 delete_path="especialidade/{especialidade_id}",
                 identifier_parameter="especialidade_id",
             ),
+            consultations_base_url=(
+                "https://consultations.example.invalid/api:consultations"
+            ),
+            statuses_base_url=(
+                "https://statuses.example.invalid/api:statuses"
+            ),
         )
         self.client = XanoClient(self.settings, self.transport)
         self.patient = {
@@ -77,6 +95,15 @@ class TestXanoClient(unittest.TestCase):
             "telefone": "11888888888",
             "email": None,
             "especialidade": "Especialidade textual",
+        }
+        self.consultation = {
+            "id": 52,
+            "paciente_id": 11,
+            "profissional_id": 21,
+            "especialidade_id": 31,
+            "data_e_hora_do_agendamento": 1768480200000,
+            "status_consulta_id": 41,
+            "observacoes": None,
         }
 
     def _response(self, data: object, status_code: int = 200) -> Mock:
@@ -463,6 +490,358 @@ class TestXanoClient(unittest.TestCase):
             self.assertFalse(api_enabled())
         with patch.dict(os.environ, {XANO_API_ENABLED_ENV: "true"}, clear=True):
             self.assertTrue(api_enabled())
+
+    def test_consultation_and_status_reads_use_confirmed_routes(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                XANO_CONSULTAS_API_ENABLED_ENV: "true",
+                XANO_STATUS_CONSULTA_API_ENABLED_ENV: "true",
+                XANO_CONSULTAS_BASE_URL_ENV: (
+                    "https://custom-consultations.example.invalid/api:group"
+                ),
+                XANO_STATUS_CONSULTA_BASE_URL_ENV: (
+                    "https://custom-statuses.example.invalid/api:group"
+                ),
+            },
+            clear=True,
+        ):
+            settings = XanoSettings.from_environment()
+            client = XanoClient(settings, self.transport)
+            self.transport.request.side_effect = [
+                self._response([]),
+                self._response(self.consultation),
+                self._response(
+                    [
+                        {
+                            "id": 31,
+                            "nome": "Status sintético",
+                            "created_at": 1762700000,
+                        }
+                    ]
+                ),
+            ]
+
+            self.assertEqual(client.list_consultations(), [])
+            self.assertEqual(client.get_consultation(52), self.consultation)
+            self.assertEqual(
+                client.list_consultation_statuses(),
+                [
+                    {
+                        "id": 31,
+                        "nome": "Status sintético",
+                        "created_at": 1762700000,
+                    }
+                ],
+            )
+
+        calls = self.transport.request.call_args_list
+        self.assertEqual(
+            [call.args[0] for call in calls], ["GET", "GET", "GET"]
+        )
+        self.assertEqual(
+            [call.args[1] for call in calls],
+            [
+                "https://custom-consultations.example.invalid/api:group/consulta",
+                "https://custom-consultations.example.invalid/api:group/consulta/52",
+                "https://custom-statuses.example.invalid/api:group/status_consulta",
+            ],
+        )
+        self.assertTrue(
+            all(
+                call.kwargs["timeout"] == REQUEST_TIMEOUT_SECONDS
+                for call in calls
+            )
+        )
+
+    def test_consultation_list_and_get_validate_confirmed_record_fields(self) -> None:
+        self.transport.request.side_effect = [
+            self._response([self.consultation]),
+            self._response(self.consultation),
+        ]
+        client = XanoClient(self.settings, self.transport)
+
+        with patch.dict(
+            os.environ,
+            {XANO_CONSULTAS_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            self.assertEqual(client.list_consultations(), [self.consultation])
+            self.assertEqual(client.get_consultation(52), self.consultation)
+
+        self.assertEqual(
+            [call.args[1] for call in self.transport.request.call_args_list],
+            [
+                f"{self.settings.consultations_base_url}/consulta",
+                f"{self.settings.consultations_base_url}/consulta/52",
+            ],
+        )
+        self.transport.request.side_effect = None
+        self.transport.request.return_value = self._response(
+            {
+                key: value
+                for key, value in self.consultation.items()
+                if key != "observacoes"
+            }
+        )
+        with patch.dict(
+            os.environ,
+            {XANO_CONSULTAS_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            record_without_observations = client.get_consultation(52)
+        self.assertNotIn("observacoes", record_without_observations)
+
+        self.transport.request.return_value = self._response(
+            {**self.consultation, "id": 53}
+        )
+        with patch.dict(
+            os.environ,
+            {XANO_CONSULTAS_API_ENABLED_ENV: "true"},
+            clear=True,
+        ), self.assertRaises(XanoResponseError):
+            client.get_consultation(52)
+
+        for invalid_record in (
+            {"id": 52},
+            {**self.consultation, "paciente_id": None},
+            {**self.consultation, "data_e_hora_do_agendamento": "timestamp"},
+            {**self.consultation, "observacoes": 42},
+        ):
+            with self.subTest(invalid_record=invalid_record):
+                self.transport.request.return_value = self._response(
+                    [invalid_record]
+                )
+                with patch.dict(
+                    os.environ,
+                    {XANO_CONSULTAS_API_ENABLED_ENV: "true"},
+                    clear=True,
+                ), self.assertRaises(XanoResponseError):
+                    client.list_consultations()
+
+    def test_consultation_writes_use_confirmed_routes_and_preserve_inputs(self) -> None:
+        create_payload = {
+            "paciente_id": 11,
+            "profissional_id": 21,
+            "especialidade_id": 31,
+            "data_e_hora_do_agendamento": 1762700000,
+            "status_consulta_id": 41,
+            "observacoes": "",
+        }
+        patch_payload = {
+            "status_consulta_id": 41,
+            "observacoes": None,
+        }
+        created_response = {"synthetic_response": "create"}
+        updated_response = {"synthetic_response": "update"}
+        self.transport.request.side_effect = [
+            self._response(created_response),
+            self._response(updated_response),
+            Mock(status_code=200),
+        ]
+        client = XanoClient(self.settings, self.transport)
+
+        with patch.dict(
+            os.environ,
+            {
+                XANO_CONSULTAS_API_ENABLED_ENV: "true",
+                XANO_CONSULTAS_WRITE_ENABLED_ENV: "true",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                client.create_consultation(create_payload),
+                created_response,
+            )
+            self.assertEqual(
+                client.update_consultation(52, patch_payload),
+                updated_response,
+            )
+            self.assertIsNone(client.delete_consultation(52))
+
+        calls = self.transport.request.call_args_list
+        self.assertEqual(
+            [call.args[0] for call in calls],
+            ["POST", "PATCH", "DELETE"],
+        )
+        self.assertEqual(
+            [call.args[1] for call in calls],
+            [
+                f"{self.settings.consultations_base_url}/consulta",
+                f"{self.settings.consultations_base_url}/consulta/52",
+                f"{self.settings.consultations_base_url}/consulta/52",
+            ],
+        )
+        self.assertEqual(calls[0].kwargs["json"], create_payload)
+        self.assertEqual(calls[1].kwargs["json"], patch_payload)
+        self.assertIsNone(calls[2].kwargs["json"])
+
+    def test_consultation_writes_are_disabled_by_default(self) -> None:
+        client = XanoClient(self.settings, self.transport)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(consultations_api_enabled())
+            self.assertFalse(consultation_status_api_enabled())
+            self.assertFalse(consultations_write_enabled())
+            with self.assertRaises(XanoConfigurationError):
+                client.list_consultations()
+            with self.assertRaises(XanoConfigurationError):
+                client.list_consultation_statuses()
+
+        with patch.dict(
+            os.environ,
+            {XANO_CONSULTAS_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            with self.assertRaises(XanoConfigurationError):
+                client.create_consultation({})
+            with self.assertRaises(XanoConfigurationError):
+                client.update_consultation(52, {})
+            with self.assertRaises(XanoConfigurationError):
+                client.delete_consultation(52)
+        self.transport.request.assert_not_called()
+
+    def test_consultation_bases_must_be_configured_externally(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                XANO_CONSULTAS_API_ENABLED_ENV: "true",
+                XANO_STATUS_CONSULTA_API_ENABLED_ENV: "true",
+            },
+            clear=True,
+        ):
+            settings = XanoSettings.from_environment()
+            client = XanoClient(settings, self.transport)
+            self.transport.request.return_value = self._response([])
+
+            with self.assertRaises(XanoConfigurationError):
+                client.list_consultations()
+            with self.assertRaises(XanoConfigurationError):
+                client.list_consultation_statuses()
+
+        self.transport.request.assert_not_called()
+
+    def test_consultation_payload_validation_preserves_nullable_observation(self) -> None:
+        client = XanoClient(self.settings, self.transport)
+        with patch.dict(
+            os.environ,
+            {
+                XANO_CONSULTAS_API_ENABLED_ENV: "true",
+                XANO_CONSULTAS_WRITE_ENABLED_ENV: "true",
+            },
+            clear=True,
+        ):
+            self.transport.request.return_value = self._response(
+                {"synthetic_response": "update"}
+            )
+            client.update_consultation(52, {"status_consulta_id": 41})
+            self.assertEqual(
+                client.update_consultation(52, {"observacoes": None}),
+                {"synthetic_response": "update"},
+            )
+            self.assertEqual(
+                [
+                    call.kwargs["json"]
+                    for call in self.transport.request.call_args_list
+                ],
+                [
+                    {"status_consulta_id": 41},
+                    {"observacoes": None},
+                ],
+            )
+            for invalid_payload in (
+                {"unexpected": "value"},
+                {"paciente_id": True},
+                {"paciente_id": 0},
+                {"paciente_id": None},
+                {"data_e_hora_do_agendamento": "timestamp"},
+                {"observacoes": 42},
+                {},
+            ):
+                with self.subTest(invalid_payload=invalid_payload):
+                    with self.assertRaises(XanoResponseError):
+                        client.update_consultation(52, invalid_payload)
+
+    def test_consultation_create_requires_all_nonnullable_reference_fields(self) -> None:
+        client = XanoClient(self.settings, self.transport)
+        valid_payload = {
+            "paciente_id": 11,
+            "profissional_id": 21,
+            "especialidade_id": 31,
+            "data_e_hora_do_agendamento": 1768480200000,
+            "status_consulta_id": 41,
+        }
+        with patch.dict(
+            os.environ,
+            {
+                XANO_CONSULTAS_API_ENABLED_ENV: "true",
+                XANO_CONSULTAS_WRITE_ENABLED_ENV: "true",
+            },
+            clear=True,
+        ):
+            for field in valid_payload:
+                invalid_payload = dict(valid_payload)
+                del invalid_payload[field]
+                with self.subTest(field=field):
+                    with self.assertRaises(XanoResponseError):
+                        client.create_consultation(invalid_payload)
+            self.transport.request.return_value = self._response(
+                {"synthetic_response": "create"}
+            )
+            client.create_consultation(
+                {**valid_payload, "observacoes": None}
+            )
+
+        self.assertEqual(self.transport.request.call_count, 1)
+        self.assertEqual(
+            self.transport.request.call_args.kwargs["json"],
+            {**valid_payload, "observacoes": None},
+        )
+
+    def test_consultation_datetime_converts_using_sao_paulo_timezone(self) -> None:
+        timestamp = consultation_datetime_to_unix_ms(
+            date(2026, 1, 15),
+            time(9, 30),
+        )
+        self.assertEqual(timestamp, 1768480200000)
+        self.assertEqual(
+            consultation_timestamp_to_local_datetime(timestamp),
+            datetime(
+                2026,
+                1,
+                15,
+                9,
+                30,
+                tzinfo=ZoneInfo("America/Sao_Paulo"),
+            ),
+        )
+
+        with self.assertRaises(ValueError):
+            consultation_timestamp_to_local_datetime(True)
+        with self.assertRaises(ValueError):
+            consultation_timestamp_to_local_datetime("1768480200000")
+        with self.assertRaises(ValueError):
+            consultation_datetime_to_unix_ms("2026-01-15", time(9, 30))
+
+    def test_consultation_status_response_requires_confirmed_fields_and_types(self) -> None:
+        client = XanoClient(self.settings, self.transport)
+        invalid_responses = (
+            [{"id": 1, "nome": "Status", "created_at": "timestamp"}],
+            [{"id": True, "nome": "Status", "created_at": 1}],
+            [{"id": 1, "nome": 3, "created_at": 1}],
+            [{"id": 1, "nome": "Status"}],
+        )
+        with patch.dict(
+            os.environ,
+            {XANO_STATUS_CONSULTA_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            for invalid_response in invalid_responses:
+                with self.subTest(invalid_response=invalid_response):
+                    self.transport.request.return_value = self._response(
+                        invalid_response
+                    )
+                    with self.assertRaises(XanoResponseError):
+                        client.list_consultation_statuses()
 
 
 if __name__ == "__main__":

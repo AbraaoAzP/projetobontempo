@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Mapping, Protocol
 from urllib.parse import urljoin, urlsplit
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -11,10 +13,15 @@ import requests
 XANO_PACIENTES_BASE_URL_ENV = "XANO_PACIENTES_BASE_URL"
 XANO_PROFISSIONAIS_BASE_URL_ENV = "XANO_PROFISSIONAIS_BASE_URL"
 XANO_ESPECIALIDADES_BASE_URL_ENV = "XANO_ESPECIALIDADES_BASE_URL"
+XANO_CONSULTAS_BASE_URL_ENV = "XANO_CONSULTAS_BASE_URL"
+XANO_STATUS_CONSULTA_BASE_URL_ENV = "XANO_STATUS_CONSULTA_BASE_URL"
 XANO_AUTHORIZATION_ENV = "XANO_AUTHORIZATION"
 XANO_API_ENABLED_ENV = "XANO_API_ENABLED"
 XANO_ESPECIALIDADES_API_ENABLED_ENV = "XANO_ESPECIALIDADES_API_ENABLED"
 XANO_ESPECIALIDADES_WRITE_ENABLED_ENV = "XANO_ESPECIALIDADES_WRITE_ENABLED"
+XANO_CONSULTAS_API_ENABLED_ENV = "XANO_CONSULTAS_API_ENABLED"
+XANO_STATUS_CONSULTA_API_ENABLED_ENV = "XANO_STATUS_CONSULTA_API_ENABLED"
+XANO_CONSULTAS_WRITE_ENABLED_ENV = "XANO_CONSULTAS_WRITE_ENABLED"
 DEFAULT_PACIENTES_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:consultorio-cadastro-pacientes"
 )
@@ -27,7 +34,39 @@ DEFAULT_ESPECIALIDADES_BASE_URL = (
 REQUEST_TIMEOUT_SECONDS = 5
 
 ResourceName = Literal["pacientes", "profissionais"]
-XanoResourceName = Literal["pacientes", "profissionais", "especialidades"]
+XanoResourceName = Literal[
+    "pacientes",
+    "profissionais",
+    "especialidades",
+    "consultas",
+    "status_consulta",
+]
+
+CONSULTATION_PAYLOAD_FIELDS = (
+    "paciente_id",
+    "profissional_id",
+    "especialidade_id",
+    "data_e_hora_do_agendamento",
+    "status_consulta_id",
+    "observacoes",
+)
+CONSULTATION_INTEGER_FIELDS = frozenset(
+    {
+        "paciente_id",
+        "profissional_id",
+        "especialidade_id",
+        "status_consulta_id",
+    }
+)
+CONSULTATION_REQUIRED_FIELDS = (
+    "paciente_id",
+    "profissional_id",
+    "especialidade_id",
+    "data_e_hora_do_agendamento",
+    "status_consulta_id",
+)
+CONSULTATION_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 RESOURCE_FIELDS: dict[ResourceName, tuple[str, ...]] = {
     "pacientes": ("id", "nome", "telefone", "email"),
@@ -117,6 +156,19 @@ class XanoSettings:
     authorization: str | None = None
     specialties_base_url: str | None = DEFAULT_ESPECIALIDADES_BASE_URL
     specialties: ResourceEndpoints = ResourceEndpoints()
+    consultations_base_url: str | None = None
+    consultations: ResourceEndpoints = ResourceEndpoints(
+        collection_path="consulta",
+        item_path="consulta/{consulta_id}",
+        create_path="consulta",
+        update_path="consulta/{consulta_id}",
+        delete_path="consulta/{consulta_id}",
+        identifier_parameter="consulta_id",
+    )
+    statuses_base_url: str | None = None
+    statuses: ResourceEndpoints = ResourceEndpoints(
+        collection_path="status_consulta"
+    )
 
     @classmethod
     def from_environment(cls) -> XanoSettings:
@@ -132,6 +184,8 @@ class XanoSettings:
                 XANO_ESPECIALIDADES_BASE_URL_ENV,
                 DEFAULT_ESPECIALIDADES_BASE_URL,
             ),
+            consultations_base_url=os.getenv(XANO_CONSULTAS_BASE_URL_ENV),
+            statuses_base_url=os.getenv(XANO_STATUS_CONSULTA_BASE_URL_ENV),
             patients=_endpoints_from_environment(
                 "PACIENTES",
                 ResourceEndpoints(
@@ -165,6 +219,17 @@ class XanoSettings:
                     identifier_parameter="especialidade_id",
                 ),
             ),
+            consultations=ResourceEndpoints(
+                collection_path="consulta",
+                item_path="consulta/{consulta_id}",
+                create_path="consulta",
+                update_path="consulta/{consulta_id}",
+                delete_path="consulta/{consulta_id}",
+                identifier_parameter="consulta_id",
+            ),
+            statuses=ResourceEndpoints(
+                collection_path="status_consulta"
+            ),
             authorization=os.getenv(XANO_AUTHORIZATION_ENV),
         )
 
@@ -175,6 +240,10 @@ class XanoSettings:
             return self.professionals
         if resource == "especialidades":
             return self.specialties
+        if resource == "consultas":
+            return self.consultations
+        if resource == "status_consulta":
+            return self.statuses
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
     def base_url_for(self, resource: XanoResourceName) -> str | None:
@@ -184,6 +253,10 @@ class XanoSettings:
             return self.professionals_base_url
         if resource == "especialidades":
             return self.specialties_base_url
+        if resource == "consultas":
+            return self.consultations_base_url
+        if resource == "status_consulta":
+            return self.statuses_base_url
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
 
@@ -324,6 +397,93 @@ class XanoClient:
         )
         self._send("especialidades", "DELETE", path)
 
+    def list_consultations(self) -> list[dict[str, Any]]:
+        _require_consultations_api_enabled()
+        endpoints = self._settings.endpoints_for("consultas")
+        data = _parse_json(
+            self._send("consultas", "GET", endpoints.collection_path)
+        )
+        if not isinstance(data, list):
+            raise XanoResponseError(
+                "A resposta de Consultas do Xano não é uma lista."
+            )
+        return [_validate_consultation_record(item) for item in data]
+
+    def get_consultation(self, consultation_id: int) -> dict[str, Any]:
+        _require_consultations_api_enabled()
+        endpoints = self._settings.endpoints_for("consultas")
+        path = _format_consultation_path(
+            endpoints.item_path,
+            consultation_id,
+            endpoints.identifier_parameter,
+        )
+        response = self._send("consultas", "GET", path)
+        record = _validate_consultation_record(_parse_json(response))
+        if record["id"] != consultation_id:
+            raise XanoResponseError(
+                "O Xano retornou uma Consulta diferente do ID solicitado."
+            )
+        return record
+
+    def list_consultation_statuses(self) -> list[dict[str, Any]]:
+        _require_status_consulta_api_enabled()
+        endpoints = self._settings.endpoints_for("status_consulta")
+        data = _parse_json(
+            self._send(
+                "status_consulta",
+                "GET",
+                endpoints.collection_path,
+            )
+        )
+        if not isinstance(data, list):
+            raise XanoResponseError(
+                "A resposta de Status da Consulta do Xano não é uma lista."
+            )
+        return [_validate_consultation_status(item) for item in data]
+
+    def create_consultation(
+        self, payload: Mapping[str, Any]
+    ) -> Any:
+        _require_consultation_writes_enabled()
+        endpoints = self._settings.endpoints_for("consultas")
+        clean_payload = _validate_consultation_payload(
+            payload,
+            require_complete=True,
+        )
+        response = self._send(
+            "consultas",
+            "POST",
+            endpoints.create_path,
+            clean_payload,
+        )
+        return _parse_json(response)
+
+    def update_consultation(
+        self,
+        consultation_id: int,
+        payload: Mapping[str, Any],
+    ) -> Any:
+        _require_consultation_writes_enabled()
+        endpoints = self._settings.endpoints_for("consultas")
+        path = _format_consultation_path(
+            endpoints.update_path,
+            consultation_id,
+            endpoints.identifier_parameter,
+        )
+        clean_payload = _validate_consultation_payload(payload)
+        response = self._send("consultas", "PATCH", path, clean_payload)
+        return _parse_json(response)
+
+    def delete_consultation(self, consultation_id: int) -> None:
+        _require_consultation_writes_enabled()
+        endpoints = self._settings.endpoints_for("consultas")
+        path = _format_consultation_path(
+            endpoints.delete_path,
+            consultation_id,
+            endpoints.identifier_parameter,
+        )
+        self._send("consultas", "DELETE", path)
+
     def _send(
         self,
         resource: XanoResourceName,
@@ -335,6 +495,8 @@ class XanoClient:
             "pacientes": XANO_PACIENTES_BASE_URL_ENV,
             "profissionais": XANO_PROFISSIONAIS_BASE_URL_ENV,
             "especialidades": XANO_ESPECIALIDADES_BASE_URL_ENV,
+            "consultas": XANO_CONSULTAS_BASE_URL_ENV,
+            "status_consulta": XANO_STATUS_CONSULTA_BASE_URL_ENV,
         }[resource]
         url = _build_url(
             self._settings.base_url_for(resource), path, base_url_env
@@ -500,6 +662,230 @@ def _require_specialty_writes_enabled() -> None:
         raise XanoConfigurationError(
             "As gravações de Especialidades estão desabilitadas pela configuração "
             "XANO_ESPECIALIDADES_WRITE_ENABLED."
+        )
+
+
+def _validate_consultation_payload(
+    payload: Mapping[str, Any],
+    *,
+    require_complete: bool = False,
+) -> dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        raise XanoResponseError("Os dados enviados precisam ser um objeto.")
+    if set(payload).difference(CONSULTATION_PAYLOAD_FIELDS):
+        raise XanoResponseError(
+            "Os dados enviados contêm campos não permitidos."
+        )
+    if require_complete:
+        missing_fields = set(CONSULTATION_REQUIRED_FIELDS).difference(payload)
+        if missing_fields:
+            raise XanoResponseError(
+                "Os dados enviados não contêm todos os campos obrigatórios."
+            )
+    elif not payload:
+        raise XanoResponseError(
+            "Informe ao menos um campo para atualizar a consulta."
+        )
+
+    for field, value in payload.items():
+        if field in CONSULTATION_INTEGER_FIELDS and (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value <= 0
+        ):
+            raise XanoResponseError(
+                f"O campo {field} deve ser um inteiro positivo."
+            )
+        if field == "data_e_hora_do_agendamento" and (
+            isinstance(value, bool) or not isinstance(value, int)
+        ):
+            raise XanoResponseError(
+                "O campo data_e_hora_do_agendamento deve ser um timestamp "
+                "Unix em milissegundos."
+            )
+        if field == "observacoes" and value is not None and not isinstance(
+            value, str
+        ):
+            raise XanoResponseError(
+                "O campo observacoes deve ser texto ou nulo."
+            )
+
+    return dict(payload)
+
+
+def _validate_consultation_record(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise XanoResponseError(
+            "O registro de Consulta retornado pelo Xano não é um objeto."
+        )
+    required_fields = {"id", *CONSULTATION_REQUIRED_FIELDS}
+    if required_fields.difference(value):
+        raise XanoResponseError(
+            "O registro de Consulta não contém os campos esperados."
+        )
+
+    record_id = value["id"]
+    if isinstance(record_id, bool) or not isinstance(record_id, int):
+        raise XanoResponseError("O identificador da Consulta é inválido.")
+    for field in CONSULTATION_INTEGER_FIELDS:
+        field_value = value[field]
+        if isinstance(field_value, bool) or not isinstance(field_value, int):
+            raise XanoResponseError(
+                f"O campo {field} retornado pela Consulta é inválido."
+            )
+    timestamp = value["data_e_hora_do_agendamento"]
+    if isinstance(timestamp, bool) or not isinstance(timestamp, int):
+        raise XanoResponseError(
+            "O timestamp da Consulta retornado pelo Xano é inválido."
+        )
+    try:
+        consultation_timestamp_to_local_datetime(timestamp)
+    except ValueError as error:
+        raise XanoResponseError(
+            "O timestamp da Consulta está fora do intervalo renderizável."
+        ) from error
+    if "observacoes" in value and value["observacoes"] is not None and not isinstance(
+        value["observacoes"], str
+    ):
+        raise XanoResponseError(
+            "O campo observacoes retornado pela Consulta é inválido."
+        )
+
+    record = {
+        field: value[field]
+        for field in ("id", *CONSULTATION_REQUIRED_FIELDS)
+    }
+    if "observacoes" in value:
+        record["observacoes"] = value["observacoes"]
+    return record
+
+
+def consultation_datetime_to_unix_ms(
+    appointment_date: date,
+    appointment_time: time,
+) -> int:
+    if isinstance(appointment_date, datetime) or not isinstance(
+        appointment_date, date
+    ):
+        raise ValueError("A data da Consulta é inválida.")
+    if not isinstance(appointment_time, time) or appointment_time.tzinfo is not None:
+        raise ValueError("O horário da Consulta deve ser um horário local sem fuso.")
+
+    local_datetime = datetime.combine(
+        appointment_date,
+        appointment_time,
+    ).replace(tzinfo=CONSULTATION_TIMEZONE)
+    delta = local_datetime.astimezone(timezone.utc) - UNIX_EPOCH
+    return (
+        delta.days * 86_400_000
+        + delta.seconds * 1_000
+        + delta.microseconds // 1_000
+    )
+
+
+def consultation_timestamp_to_local_datetime(timestamp_ms: int) -> datetime:
+    if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int):
+        raise ValueError("O timestamp da Consulta deve ser inteiro em milissegundos.")
+    try:
+        utc_datetime = UNIX_EPOCH + timedelta(milliseconds=timestamp_ms)
+    except OverflowError as error:
+        raise ValueError("O timestamp da Consulta está fora do intervalo válido.") from error
+    return utc_datetime.astimezone(CONSULTATION_TIMEZONE)
+
+
+def _validate_consultation_status(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise XanoResponseError(
+            "O registro de Status da Consulta não é um objeto."
+        )
+
+    record_id = value.get("id")
+    name = value.get("nome")
+    created_at = value.get("created_at")
+    if isinstance(record_id, bool) or not isinstance(record_id, int):
+        raise XanoResponseError(
+            "O identificador do Status da Consulta é inválido."
+        )
+    if not isinstance(name, str):
+        raise XanoResponseError(
+            "O nome do Status da Consulta é inválido."
+        )
+    if isinstance(created_at, bool) or not isinstance(created_at, int):
+        raise XanoResponseError(
+            "A data de criação do Status da Consulta é inválida."
+        )
+    return {"id": record_id, "nome": name, "created_at": created_at}
+
+
+def _format_consultation_path(
+    path_template: str | None,
+    consultation_id: int,
+    identifier_parameter: str,
+) -> str:
+    if isinstance(consultation_id, bool) or not isinstance(
+        consultation_id, int
+    ):
+        raise ValueError("O identificador da consulta deve ser um inteiro.")
+    marker = "{" + identifier_parameter + "}"
+    if not path_template or marker not in path_template:
+        raise XanoConfigurationError(
+            f"O caminho da consulta deve conter o marcador {marker}."
+        )
+    formatted_path = path_template.replace(marker, str(consultation_id))
+    if "{" in formatted_path or "}" in formatted_path:
+        raise XanoConfigurationError(
+            "O caminho da consulta contém marcadores inválidos."
+        )
+    return formatted_path
+
+
+def consultations_api_enabled() -> bool:
+    return (
+        os.getenv(XANO_CONSULTAS_API_ENABLED_ENV, "").strip().lower()
+        == "true"
+    )
+
+
+def consultation_status_api_enabled() -> bool:
+    return (
+        os.getenv(XANO_STATUS_CONSULTA_API_ENABLED_ENV, "")
+        .strip()
+        .lower()
+        == "true"
+    )
+
+
+def consultations_write_enabled() -> bool:
+    return (
+        os.getenv(XANO_CONSULTAS_WRITE_ENABLED_ENV, "")
+        .strip()
+        .lower()
+        == "true"
+    )
+
+
+def _require_consultations_api_enabled() -> None:
+    if not consultations_api_enabled():
+        raise XanoConfigurationError(
+            "A API de Consultas está desabilitada pela configuração "
+            f"{XANO_CONSULTAS_API_ENABLED_ENV}."
+        )
+
+
+def _require_status_consulta_api_enabled() -> None:
+    if not consultation_status_api_enabled():
+        raise XanoConfigurationError(
+            "A API de Status da Consulta está desabilitada pela configuração "
+            f"{XANO_STATUS_CONSULTA_API_ENABLED_ENV}."
+        )
+
+
+def _require_consultation_writes_enabled() -> None:
+    _require_consultations_api_enabled()
+    if not consultations_write_enabled():
+        raise XanoConfigurationError(
+            "As gravações de Consultas estão desabilitadas pela configuração "
+            f"{XANO_CONSULTAS_WRITE_ENABLED_ENV}."
         )
 
 
