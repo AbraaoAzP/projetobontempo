@@ -30,6 +30,11 @@ query "paciente/{paciente_id}" verb=PATCH {
         function.run "validar_telefone_paciente" {
           input = {telefone: $input.telefone}
         } as $telefone_validado
+
+        precondition ($telefone_validado == true) {
+          error_type = "inputerror"
+          error = "Telefone inválido."
+        }
       }
     }
 

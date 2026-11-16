@@ -32,7 +32,7 @@ query "profissional/{profissional_id}" verb=PATCH {
           input = {telefone: $input.telefone}
         } as $telefone_validado
 
-        precondition ($telefone_validado.valid) {
+        precondition ($telefone_validado == true) {
           error_type = "inputerror"
           error = "Telefone inválido."
         }
