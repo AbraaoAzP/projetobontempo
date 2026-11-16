@@ -10,7 +10,7 @@ from services.xano import (
     specialties_api_enabled,
     specialties_write_enabled,
 )
-from ui import apply_styles, show_page_header
+from ui import apply_styles, render_clean_table, show_page_header
 
 
 def _duplicate_name(
@@ -104,22 +104,26 @@ if enabled and list_succeeded:
     st.divider()
     st.subheader("Especialidades cadastradas")
     if specialties:
-        st.dataframe(specialties, hide_index=True, width="stretch")
+        render_clean_table(
+            specialties,
+            headers={"id": "ID", "nome": "Especialidade"},
+        )
         st.caption("Fonte: API HTTP do Xano.")
     else:
         st.info("Nenhuma especialidade cadastrada no Xano.")
 
 if list_succeeded and specialties:
+    specialty_ids = [int(specialty["id"]) for specialty in specialties]
+    specialty_labels = {
+        int(specialty["id"]): f"{specialty['nome']} · ID {int(specialty['id'])}"
+        for specialty in specialties
+    }
+
     with st.expander("Consultar ou editar especialidade"):
-        specialty_ids = [int(specialty["id"]) for specialty in specialties]
         selected_id = st.selectbox(
             "Especialidade",
             specialty_ids,
-            format_func=lambda specialty_id: next(
-                f"{specialty['nome']} · ID {specialty_id}"
-                for specialty in specialties
-                if specialty["id"] == specialty_id
-            ),
+            format_func=lambda specialty_id: specialty_labels[specialty_id],
             key="specialty_edit_selection",
         )
         if st.button(
@@ -183,34 +187,40 @@ if list_succeeded and specialties:
         "A exclusão é permanente. Confirme somente a especialidade selecionada; "
         "a API pode rejeitar a operação se houver referências."
     )
-    for specialty in specialties:
-        specialty_id = int(specialty["id"])
-        with st.container(border=True):
-            st.write(f"{specialty['nome']} · ID {specialty_id}")
-            confirmed = st.checkbox(
-                f"Confirmo a exclusão de {specialty['nome']}",
-                key=f"specialty_delete_confirm_{specialty_id}",
-                disabled=not write_enabled,
-            )
-            if st.button(
-                "Excluir especialidade",
-                key=f"specialty_delete_{specialty_id}",
-                type="secondary",
-                disabled=not write_enabled or not confirmed,
-            ):
-                with st.spinner("Excluindo especialidade no Xano..."):
-                    try:
-                        client.delete_specialty(specialty_id)
-                    except XanoError as error:
-                        st.error(
-                            f"Não foi possível excluir a especialidade: {error}"
-                        )
-                    else:
-                        st.session_state.pop("specialty_edit_record", None)
-                        st.session_state["specialties_feedback"] = (
-                            "Especialidade excluída no Xano."
-                        )
-                        st.rerun()
+    with st.container(border=True):
+        delete_id = st.selectbox(
+            "Selecione a especialidade para excluir",
+            specialty_ids,
+            format_func=lambda specialty_id: specialty_labels[specialty_id],
+            key="specialty_delete_selection",
+        )
+        selected_specialty = next(
+            s for s in specialties if int(s["id"]) == delete_id
+        )
+        confirmed = st.checkbox(
+            f"Confirmo a exclusão de {selected_specialty['nome']}",
+            key=f"specialty_delete_confirm_{delete_id}",
+            disabled=not write_enabled,
+        )
+        if st.button(
+            "Excluir especialidade",
+            key=f"specialty_delete_{delete_id}",
+            type="secondary",
+            disabled=not write_enabled or not confirmed,
+        ):
+            with st.spinner("Excluindo especialidade no Xano..."):
+                try:
+                    client.delete_specialty(delete_id)
+                except XanoError as error:
+                    st.error(
+                        f"Não foi possível excluir a especialidade: {error}"
+                    )
+                else:
+                    st.session_state.pop("specialty_edit_record", None)
+                    st.session_state["specialties_feedback"] = (
+                        "Especialidade excluída no Xano."
+                    )
+                    st.rerun()
 
 st.caption(
     "Esta página usa o catálogo Xano e não acessa o SQLite como alternativa. "
