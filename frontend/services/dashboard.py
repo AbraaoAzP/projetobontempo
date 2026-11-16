@@ -15,6 +15,7 @@ from services.xano import (
     XanoError,
     XanoSettings,
     api_enabled,
+    specialties_api_enabled,
 )
 
 
@@ -145,18 +146,36 @@ def load_dashboard(
         settings,
         XANO_PROFISSIONAIS_BASE_URL_ENV,
     )
-    specialties = Metric(
-        value=None,
-        state="unavailable",
-        source="Xano",
-        message="A integração Xano de Especialidades não está configurada.",
-    )
+    specialties = _load_specialties_count(settings)
 
     return DashboardData(
         patients=patients,
         professionals=professionals,
         specialties=specialties,
         consultations=consultation_summary,
+    )
+
+
+def _load_specialties_count(settings: XanoSettings) -> Metric:
+    if not specialties_api_enabled():
+        return _unavailable("A integração Xano de Especialidades não está configurada.")
+    if not settings.specialties_base_url or not settings.specialties_base_url.strip():
+        return _unavailable("A URL da API de Especialidades não está configurada.")
+
+    try:
+        records = XanoClient(settings).list_specialties()
+    except XanoError as error:
+        return Metric(
+            value=None,
+            state="error",
+            source="Xano",
+            message=f"Falha ao consultar o Xano: {error}",
+        )
+    return Metric(
+        value=len(records),
+        state="available",
+        source="Xano",
+        message="API Xano configurada",
     )
 
 
