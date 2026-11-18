@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .env
 .env.*
+run1.env
 !.env.example
 .streamlit/secrets.toml
 data/*.sqlite3*

@@ -3,18 +3,35 @@ from datetime import date, datetime, time
 import streamlit as st
 
 from services import database
+from services.xano_cache import (
+    XanoReadRateLimit,
+    load_consultations,
+    load_consultation_statuses,
+    load_professional_specialties,
+    load_records,
+    load_specialties,
+)
 from services.xano import (
     XanoClient,
     XanoError,
+    XanoHTTPError,
+    XanoSettings,
     CONSULTATION_TIMEZONE,
     api_enabled,
     consultation_datetime_to_unix_ms,
     consultation_status_api_enabled,
     consultation_timestamp_to_local_datetime,
     consultations_api_enabled,
+    professional_specialties_api_enabled,
     specialties_api_enabled,
 )
 from ui import apply_styles, show_page_header
+
+
+def _raise_cached_rate_limit(result: object) -> object:
+    if isinstance(result, XanoReadRateLimit):
+        raise XanoHTTPError(result.status_code)
+    return result
 
 
 def _catalog_names(records: list[dict[str, object]]) -> dict[int, str]:
@@ -44,16 +61,23 @@ show_page_header(
 
 if xano_mode_enabled:
     client = XanoClient()
+    settings = XanoSettings.from_environment()
     consultations = None
     statuses = None
     patients = None
     professionals = None
     specialties = None
+    professional_specialties = None
 
     st.subheader("Consultas no Xano")
     if consultations_api_enabled():
         try:
-            consultations = client.list_consultations()
+            consultations = _raise_cached_rate_limit(
+                load_consultations(
+                    settings.consultations_base_url or "",
+                    settings.authorization,
+                )
+            )
         except XanoError as error:
             st.error(f"Não foi possível carregar consultas do Xano: {error}")
         else:
@@ -70,7 +94,12 @@ if xano_mode_enabled:
     st.subheader("Status das Consultas no Xano")
     if consultation_status_api_enabled():
         try:
-            statuses = client.list_consultation_statuses()
+            statuses = _raise_cached_rate_limit(
+                load_consultation_statuses(
+                    settings.statuses_base_url or "",
+                    settings.authorization,
+                )
+            )
         except XanoError as error:
             st.error(
                 f"Não foi possível carregar status das Consultas do Xano: {error}"
@@ -96,11 +125,23 @@ if xano_mode_enabled:
 
     if api_enabled():
         try:
-            patients = client.list_records("pacientes")
+            patients = _raise_cached_rate_limit(
+                load_records(
+                    "pacientes",
+                    settings.patients_base_url or "",
+                    settings.authorization,
+                )
+            )
         except XanoError as error:
             st.error(f"Não foi possível carregar Pacientes do Xano: {error}")
         try:
-            professionals = client.list_records("profissionais")
+            professionals = _raise_cached_rate_limit(
+                load_records(
+                    "profissionais",
+                    settings.professionals_base_url or "",
+                    settings.authorization,
+                )
+            )
         except XanoError as error:
             st.error(f"Não foi possível carregar Profissionais do Xano: {error}")
     else:
@@ -108,7 +149,12 @@ if xano_mode_enabled:
 
     if specialties_api_enabled():
         try:
-            specialties = client.list_specialties()
+            specialties = _raise_cached_rate_limit(
+                load_specialties(
+                    settings.specialties_base_url or "",
+                    settings.authorization,
+                )
+            )
         except XanoError as error:
             st.error(f"Não foi possível carregar Especialidades do Xano: {error}")
     else:
@@ -119,10 +165,45 @@ if xano_mode_enabled:
     specialty_names = _catalog_names(specialties or [])
     status_names = _catalog_names(statuses or [])
 
-    if specialties is not None:
+    if professional_specialties_api_enabled():
+        try:
+            professional_specialties = _raise_cached_rate_limit(
+                load_professional_specialties(
+                    settings.professional_specialties_base_url or "",
+                    settings.authorization,
+                )
+            )
+        except XanoError as error:
+            st.error(
+                "Não foi possível carregar os vínculos "
+                f"Profissional–Especialidade do Xano: {error}"
+            )
+    else:
+        st.info(
+            "A leitura dos vínculos Profissional–Especialidade no Xano "
+            "está desabilitada."
+        )
+
+    valid_associations: dict[int, set[int]] = {}
+    invalid_association_count = 0
+    for association in professional_specialties or []:
+        professional_id = association["profissional_id"]
+        specialty_id = association["especialidade_id"]
+        if professional_id not in professional_names or specialty_id not in specialty_names:
+            invalid_association_count += 1
+            continue
+        valid_associations.setdefault(professional_id, set()).add(specialty_id)
+
+    if invalid_association_count:
+        st.error(
+            f"{invalid_association_count} vínculo(s) Profissional–Especialidade "
+            "referenciam catálogos inexistentes e foram bloqueados."
+        )
+
+    if specialties is not None and professional_specialties is None:
         st.warning(
             "O catálogo de Especialidades foi carregado do Xano, mas a API "
-            "disponível não confirma o vínculo Profissional–Especialidade. "
+            "do vínculo Profissional–Especialidade não está disponível. "
             "O campo textual especialidade do Profissional não será usado "
             "como identificador; a seleção permanece bloqueada."
         )
@@ -166,6 +247,19 @@ if xano_mode_enabled:
 
     st.subheader("Preparar consulta")
     if consultations_api_enabled():
+        professional_id = st.selectbox(
+            "Profissional *",
+            options=list(professional_names),
+            index=None,
+            placeholder="Selecione uma opção",
+            format_func=lambda item_id: (
+                f"{professional_names[item_id]} (#{item_id})"
+            ),
+            key="xano_create_professional",
+        )
+        available_specialty_ids = sorted(
+            valid_associations.get(professional_id, set())
+        ) if professional_id is not None else []
         with st.form("xano_create_consultation"):
             st.caption(
                 "O formulário usa somente referências carregadas do Xano. "
@@ -181,22 +275,16 @@ if xano_mode_enabled:
                 ),
                 key="xano_create_patient",
             )
-            professional_id = st.selectbox(
-                "Profissional *",
-                options=list(professional_names),
-                index=None,
-                placeholder="Selecione uma opção",
-                format_func=lambda item_id: (
-                    f"{professional_names[item_id]} (#{item_id})"
-                ),
-                key="xano_create_professional",
-            )
             specialty_id = st.selectbox(
                 "Especialidade *",
-                options=[],
+                options=available_specialty_ids,
                 index=None,
-                placeholder="Vínculo não confirmado",
-                disabled=True,
+                placeholder=(
+                    "Nenhum vínculo disponível"
+                    if professional_id is not None
+                    else "Selecione um profissional"
+                ),
+                disabled=not available_specialty_ids,
                 format_func=lambda item_id: (
                     f"{specialty_names[item_id]} (#{item_id})"
                 ),
@@ -233,9 +321,9 @@ if xano_mode_enabled:
             st.form_submit_button("Cadastrar consulta", disabled=True)
 
         st.warning(
-            "A gravação permanece desabilitada: a relação Profissional–"
-            "Especialidade e as regras de conflito/duração ainda não estão "
-            "confirmadas. O contrato remoto recebe um único timestamp."
+            "A gravação permanece desabilitada até a validação final das "
+            "regras de conflito/duração e autorização para testes remotos. "
+            "O contrato remoto recebe um único timestamp."
         )
     else:
         st.info("A API de Consultas está desabilitada; o formulário remoto não está disponível.")
@@ -308,12 +396,19 @@ if xano_mode_enabled:
                     ),
                     key="xano_edit_professional",
                 )
+                edit_specialty_ids = sorted(
+                    valid_associations.get(record["profissional_id"], set())
+                )
                 st.selectbox(
                     "Especialidade *",
-                    options=[],
-                    index=None,
-                    placeholder="Vínculo não confirmado",
-                    disabled=True,
+                    options=edit_specialty_ids,
+                    index=(
+                        edit_specialty_ids.index(record["especialidade_id"])
+                        if record["especialidade_id"] in edit_specialty_ids
+                        else None
+                    ),
+                    placeholder="Nenhum vínculo disponível",
+                    disabled=not edit_specialty_ids,
                     format_func=lambda item_id: (
                         f"{specialty_names[item_id]} (#{item_id})"
                     ),

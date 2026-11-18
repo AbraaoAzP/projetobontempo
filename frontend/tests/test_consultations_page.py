@@ -12,6 +12,7 @@ from services.xano import (
     XanoHTTPError,
     XanoResponseError,
 )
+from services.xano_cache import clear_xano_read_caches
 
 
 FRONTEND = Path(__file__).resolve().parents[1]
@@ -43,6 +44,12 @@ SPECIALTIES = [
 
 
 class ConsultationsPageTests(unittest.TestCase):
+    def setUp(self) -> None:
+        clear_xano_read_caches()
+
+    def tearDown(self) -> None:
+        clear_xano_read_caches()
+
     def _environment(
         self,
         *,
@@ -59,6 +66,7 @@ class ConsultationsPageTests(unittest.TestCase):
         values["XANO_STATUS_CONSULTA_API_ENABLED"] = statuses_enabled
         values["XANO_API_ENABLED"] = catalogs_enabled
         values["XANO_ESPECIALIDADES_API_ENABLED"] = catalogs_enabled
+        values["XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED"] = "false"
         return patch.dict(os.environ, values, clear=True)
 
     def _run_page(self) -> AppTest:
@@ -332,6 +340,69 @@ class ConsultationsPageTests(unittest.TestCase):
         create.assert_not_called()
         update.assert_not_called()
         delete.assert_not_called()
+        self.assertEqual(len(page.exception), 0)
+
+    def test_specialties_follow_selected_professional_associations(self):
+        associations = [
+            {"id": 61, "profissional_id": 21, "especialidade_id": 31}
+        ]
+        with self._environment(
+            consultations_enabled="true",
+            statuses_enabled="true",
+            catalogs_enabled="true",
+        ), patch.dict(
+            os.environ,
+            {"XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED": "true"},
+        ), patch.object(
+            XanoClient, "list_consultations", return_value=[]
+        ), patch.object(
+            XanoClient, "list_consultation_statuses", return_value=[]
+        ), patch(
+            "services.xano.XanoClient.list_records",
+            side_effect=lambda resource: {
+                "pacientes": PATIENTS[1:],
+                "profissionais": PROFESSIONALS[1:],
+            }[resource],
+        ), patch.object(
+            XanoClient, "list_specialties", return_value=SPECIALTIES[1:]
+        ), patch.object(
+            XanoClient,
+            "list_professional_specialties",
+            return_value=associations,
+        ) as list_associations:
+            page = self._run_page()
+            page.selectbox(key="xano_create_professional").set_value(21)
+            page.run()
+
+        self.assertGreaterEqual(list_associations.call_count, 1)
+        self.assertEqual(
+            page.selectbox(key="xano_create_specialty").options,
+            ["Especialidade sintética (#31)"],
+        )
+        self.assertFalse(page.selectbox(key="xano_create_specialty").disabled)
+        self.assertEqual(len(page.exception), 0)
+        self.assertEqual(list_associations.call_count, 1)
+
+    def test_professional_specialty_429_is_explicit_and_not_repeated_on_rerun(self):
+        with self._environment(
+            consultations_enabled="true",
+            statuses_enabled="true",
+            catalogs_enabled="true",
+        ), patch.dict(
+            os.environ,
+            {"XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED": "true"},
+        ), patch.object(
+            XanoClient,
+            "list_professional_specialties",
+            side_effect=XanoHTTPError(429),
+        ) as list_associations:
+            page = self._run_page()
+            page.run()
+
+        list_associations.assert_called_once_with()
+        self.assertTrue(
+            any("HTTP 429" in item.value for item in page.error)
+        )
         self.assertEqual(len(page.exception), 0)
 
 

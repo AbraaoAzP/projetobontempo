@@ -7,7 +7,13 @@ from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Sequence
 
 from services import database
+from services.xano_cache import (
+    XanoReadRateLimit,
+    load_records,
+    load_specialties,
+)
 from services.xano import (
+    XANO_ESPECIALIDADES_BASE_URL_ENV,
     XANO_PACIENTES_BASE_URL_ENV,
     XANO_PROFISSIONAIS_BASE_URL_ENV,
     ResourceName,
@@ -157,13 +163,20 @@ def load_dashboard(
 
 
 def _load_specialties_count(settings: XanoSettings) -> Metric:
+    if not api_enabled():
+        return _unavailable("A integração Xano está desabilitada.")
     if not specialties_api_enabled():
         return _unavailable("A integração Xano de Especialidades não está configurada.")
-    if not settings.specialties_base_url or not settings.specialties_base_url.strip():
+    if not os.getenv(XANO_ESPECIALIDADES_BASE_URL_ENV, "").strip():
         return _unavailable("A URL da API de Especialidades não está configurada.")
 
     try:
-        records = XanoClient(settings).list_specialties()
+        records = load_specialties(
+            settings.specialties_base_url or "",
+            settings.authorization,
+        )
+        if isinstance(records, XanoReadRateLimit):
+            raise XanoHTTPError(records.status_code)
     except XanoError as error:
         return Metric(
             value=None,
@@ -188,11 +201,15 @@ def _load_xano_count(
         return _unavailable("A integração Xano está desabilitada.")
     if not os.getenv(base_url_environment, "").strip():
         return _unavailable("A URL da API não está configurada.")
-    if not settings.authorization or not settings.authorization.strip():
-        return _unavailable("A credencial de autorização Xano não está configurada.")
-
     try:
-        records = XanoClient(settings).list_records(resource)
+        base_url = settings.base_url_for(resource)
+        records = load_records(
+            resource,
+            base_url or "",
+            settings.authorization,
+        )
+        if isinstance(records, XanoReadRateLimit):
+            raise XanoHTTPError(records.status_code)
     except XanoError as error:
         return Metric(
             value=None,

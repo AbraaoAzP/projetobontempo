@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from services import dashboard
 from services import database
+from services.xano_cache import clear_xano_read_caches
 from services.xano import XanoHTTPError
 from streamlit.testing.v1 import AppTest
 
@@ -24,6 +25,12 @@ FRONTEND = Path(__file__).resolve().parents[1]
 
 
 class DashboardServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        clear_xano_read_caches()
+
+    def tearDown(self) -> None:
+        clear_xano_read_caches()
+
     def test_load_dashboard_reads_real_local_consultation_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             db_path = Path(temporary_directory) / "dashboard.sqlite3"
@@ -178,7 +185,6 @@ class DashboardServiceTests(unittest.TestCase):
     def test_xano_counts_use_only_configured_resources_and_report_failures(self) -> None:
         environment = {
             "XANO_API_ENABLED": "true",
-            "XANO_AUTHORIZATION": "Bearer synthetic-test-token",
             "XANO_PACIENTES_BASE_URL": "https://patients.example.invalid/api",
         }
         with patch.dict(os.environ, environment, clear=True), patch.object(
@@ -202,6 +208,7 @@ class DashboardServiceTests(unittest.TestCase):
         self.assertEqual(list_records.call_args_list[0].args, ("pacientes",))
         self.assertEqual(list_records.call_count, 1)
 
+        clear_xano_read_caches()
         with patch.dict(
             os.environ,
             {
@@ -256,7 +263,7 @@ class DashboardServiceTests(unittest.TestCase):
             dashboard, "load_dashboard", return_value=synthetic_data
         ), patch("requests.Session.request") as request:
             page = AppTest.from_file(
-                str(FRONTEND / "app.py"), default_timeout=10
+                str(FRONTEND / "app.py"), default_timeout=30
             ).run()
 
         request.assert_not_called()

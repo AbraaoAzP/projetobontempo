@@ -62,6 +62,39 @@ validada no ambiente Xano; nenhum endpoint remoto foi alterado nesta etapa.
 Os testes automatizados substituem o cliente por mocks ou usam transporte
 simulado; nenhuma requisição real ao Xano é feita pela suíte.
 
+### Configuração local por arquivo
+
+O frontend procura `frontend/run1.env` primeiro e `frontend/.env` como
+complemento. Valores já definidos no ambiente do processo têm precedência,
+porque o carregador usa `setdefault` e não sobrescreve configurações existentes.
+Os dois arquivos são ignorados pelo Git. `run1.env` pode conter os nomes dos
+grupos Xano usados pela aplicação; `XANO_AUTHORIZATION` permanece ausente até
+haver confirmação de necessidade.
+
+As leituras podem ser habilitadas separadamente das gravações:
+
+- Pacientes: `XANO_API_ENABLED=true` e
+  `XANO_PACIENTES_WRITE_ENABLED=false`
+- Profissionais: `XANO_API_ENABLED=true` e
+  `XANO_PROFISSIONAIS_WRITE_ENABLED=false`
+- Especialidades: `XANO_ESPECIALIDADES_API_ENABLED=true` e
+  `XANO_ESPECIALIDADES_WRITE_ENABLED=false`
+- Consultas: `XANO_CONSULTAS_API_ENABLED=true` e
+  `XANO_CONSULTAS_WRITE_ENABLED=false`
+- Status de Consulta: `XANO_STATUS_CONSULTA_API_ENABLED=true`
+- Profissional–Especialidade:
+  `XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true`
+
+O nome legado fornecido por algumas configurações externas,
+`XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL`, é aceito como fallback para
+`XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL`. Prontuários têm uma URL
+configurável, mas não possuem módulo ou chamadas implementadas nesta etapa.
+
+As leituras de catálogos e vínculos usam cache curto de 60 segundos para evitar
+repetir GETs durante reruns do Streamlit. O cache não transforma respostas HTTP
+429 em sucesso ou lista vazia: o limite é preservado como erro explícito e
+evita novas chamadas repetidas durante o período do cache.
+
 ### Especialidades
 
 Em 2026-11-09, o usuário confirmou o contrato e autorizou integrar os endpoints
@@ -89,9 +122,9 @@ erros de referência retornados pela API; não há exclusão em cascata implemen
 no frontend.
 
 As flags `XANO_ESPECIALIDADES_API_ENABLED` e
-`XANO_ESPECIALIDADES_WRITE_ENABLED` ficam habilitadas por padrão para esta
-integração, e podem ser definidas como `false` para desabilitar leituras ou
-escritas. `XANO_ESPECIALIDADES_BASE_URL` pode sobrescrever a base URL. O endpoint
+`XANO_ESPECIALIDADES_WRITE_ENABLED` ficam desabilitadas por padrão. A leitura
+e a escrita devem ser habilitadas explicitamente com `true`.
+`XANO_ESPECIALIDADES_BASE_URL` pode sobrescrever a base URL. O endpoint
 é `Public`; não foi adicionado cabeçalho de autenticação nem alterada a política
 de segurança do Xano. Antes de qualquer POST, PATCH ou DELETE real executado
 durante validação, é necessário apresentar o plano e obter autorização explícita.
@@ -108,6 +141,17 @@ Status, além da estrutura de POST, PATCH e DELETE de Consultas conforme os
 inputs confirmados no painel. `XANO_CONSULTAS_BASE_URL` e
 `XANO_STATUS_CONSULTA_BASE_URL` devem receber externamente as bases dos grupos
 Xano correspondentes. Não há fallback de URL para essas APIs.
+
+A relação Profissional–Especialidade é lida pelo grupo
+`Profissional Especialidades`, usando
+`XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL` e a rota GET
+`/profissional_especialidade`. A leitura só ocorre com
+`XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true`; sem URL ou habilitação, o
+seletor de especialidade permanece bloqueado. Cada associação precisa retornar
+`id`, `profissional_id` e `especialidade_id` como inteiros positivos.
+Associações duplicadas são rejeitadas, e referências que não existam nos
+catálogos carregados são bloqueadas na interface. O campo textual legado de
+Profissional não é usado como vínculo.
 
 Leituras permanecem desabilitadas até `XANO_CONSULTAS_API_ENABLED=true` e
 `XANO_STATUS_CONSULTA_API_ENABLED=true`, respectivamente. A tabela remota

@@ -20,6 +20,8 @@ from services.xano import (
     XANO_ESPECIALIDADES_WRITE_ENABLED_ENV,
     XANO_PACIENTES_BASE_URL_ENV,
     XANO_PROFISSIONAIS_BASE_URL_ENV,
+    XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV,
+    XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL_ENV,
     XANO_STATUS_CONSULTA_API_ENABLED_ENV,
     XANO_STATUS_CONSULTA_BASE_URL_ENV,
     ResourceEndpoints,
@@ -37,6 +39,7 @@ from services.xano import (
     consultation_timestamp_to_local_datetime,
     consultations_api_enabled,
     consultations_write_enabled,
+    professional_specialties_api_enabled,
     specialties_api_enabled,
     specialties_write_enabled,
 )
@@ -44,6 +47,15 @@ from services.xano import (
 
 class TestXanoClient(unittest.TestCase):
     def setUp(self) -> None:
+        self._write_environment = patch.dict(
+            os.environ,
+            {
+                "XANO_PACIENTES_WRITE_ENABLED": "true",
+                "XANO_PROFISSIONAIS_WRITE_ENABLED": "true",
+            },
+        )
+        self._write_environment.start()
+        self.addCleanup(self._write_environment.stop)
         self.transport = Mock()
         self.settings = XanoSettings(
             patients_base_url="https://patients.example.invalid/api:patients",
@@ -79,6 +91,9 @@ class TestXanoClient(unittest.TestCase):
             ),
             statuses_base_url=(
                 "https://statuses.example.invalid/api:statuses"
+            ),
+            professional_specialties_base_url=(
+                "https://associations.example.invalid/api:associations"
             ),
         )
         self.client = XanoClient(self.settings, self.transport)
@@ -362,8 +377,19 @@ class TestXanoClient(unittest.TestCase):
         ]
         client = XanoClient(settings, self.transport)
 
-        self.assertEqual(client.list_specialties(), [{"id": 7, "nome": "Fictícia"}])
-        self.assertEqual(client.get_specialty(7), {"id": 7, "nome": "Fictícia"})
+        with patch.dict(
+            os.environ,
+            {XANO_ESPECIALIDADES_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            self.assertEqual(
+                client.list_specialties(),
+                [{"id": 7, "nome": "Fictícia"}],
+            )
+            self.assertEqual(
+                client.get_specialty(7),
+                {"id": 7, "nome": "Fictícia"},
+            )
         with patch.dict(
             os.environ,
             {XANO_ESPECIALIDADES_WRITE_ENABLED_ENV: "true"},
@@ -414,10 +440,10 @@ class TestXanoClient(unittest.TestCase):
             self.client.update_specialty(7, {})
         self.transport.request.assert_not_called()
 
-    def test_specialty_read_and_write_are_enabled_by_default_and_can_be_disabled(self) -> None:
+    def test_specialty_read_and_write_require_explicit_enablement(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(specialties_api_enabled())
-            self.assertTrue(specialties_write_enabled())
+            self.assertFalse(specialties_api_enabled())
+            self.assertFalse(specialties_write_enabled())
 
         with patch.dict(
             os.environ,
@@ -459,7 +485,10 @@ class TestXanoClient(unittest.TestCase):
         custom_url = "https://specialties.example.invalid/api:custom"
         with patch.dict(
             os.environ,
-            {XANO_ESPECIALIDADES_BASE_URL_ENV: custom_url},
+            {
+                XANO_ESPECIALIDADES_API_ENABLED_ENV: "true",
+                XANO_ESPECIALIDADES_BASE_URL_ENV: custom_url,
+            },
             clear=True,
         ):
             settings = XanoSettings.from_environment()
@@ -490,6 +519,30 @@ class TestXanoClient(unittest.TestCase):
             self.assertFalse(api_enabled())
         with patch.dict(os.environ, {XANO_API_ENABLED_ENV: "true"}, clear=True):
             self.assertTrue(api_enabled())
+
+    def test_resource_writes_are_disabled_by_default(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "XANO_PACIENTES_WRITE_ENABLED": "false",
+                "XANO_PROFISSIONAIS_WRITE_ENABLED": "false",
+            },
+            clear=True,
+        ):
+            with self.assertRaises(XanoConfigurationError):
+                self.client.create_record(
+                    "pacientes",
+                    {"nome": "Fictício", "telefone": "11999999999"},
+                )
+            with self.assertRaises(XanoConfigurationError):
+                self.client.update_record(
+                    "profissionais",
+                    21,
+                    {"especialidade": "Clínica"},
+                )
+            with self.assertRaises(XanoConfigurationError):
+                self.client.delete_record("pacientes", 11)
+        self.transport.request.assert_not_called()
 
     def test_consultation_and_status_reads_use_confirmed_routes(self) -> None:
         with patch.dict(
@@ -618,6 +671,66 @@ class TestXanoClient(unittest.TestCase):
                     clear=True,
                 ), self.assertRaises(XanoResponseError):
                     client.list_consultations()
+
+    def test_professional_specialty_list_uses_confirmed_route_and_rejects_invalid_data(
+        self,
+    ) -> None:
+        association = {
+            "id": 61,
+            "profissional_id": 21,
+            "especialidade_id": 31,
+            "created_at": 1762700000,
+        }
+        self.transport.request.return_value = self._response([association])
+        client = XanoClient(self.settings, self.transport)
+
+        with patch.dict(
+            os.environ,
+            {XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV: "true"},
+            clear=True,
+        ):
+            self.assertEqual(
+                client.list_professional_specialties(),
+                [
+                    {
+                        "id": 61,
+                        "profissional_id": 21,
+                        "especialidade_id": 31,
+                    }
+                ],
+            )
+
+        self.assertEqual(
+            self.transport.request.call_args.args[1],
+            "https://associations.example.invalid/api:associations/"
+            "profissional_especialidade",
+        )
+        for invalid_response in (
+            [{"id": 61, "profissional_id": 0, "especialidade_id": 31}],
+            [{"id": True, "profissional_id": 21, "especialidade_id": 31}],
+            [
+                association,
+                {**association, "id": 62},
+            ],
+        ):
+            with self.subTest(invalid_response=invalid_response):
+                self.transport.request.return_value = self._response(
+                    invalid_response
+                )
+                with patch.dict(
+                    os.environ,
+                    {XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV: "true"},
+                    clear=True,
+                ), self.assertRaises(XanoResponseError):
+                    client.list_professional_specialties()
+
+    def test_professional_specialty_read_requires_explicit_configuration(self) -> None:
+        client = XanoClient(self.settings, self.transport)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(professional_specialties_api_enabled())
+            with self.assertRaises(XanoConfigurationError):
+                client.list_professional_specialties()
+        self.transport.request.assert_not_called()
 
     def test_consultation_writes_use_confirmed_routes_and_preserve_inputs(self) -> None:
         create_payload = {

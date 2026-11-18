@@ -21,7 +21,7 @@ O cliente valida nos registros de Consulta o ID, as quatro referências, o times
 
 As operações de escrita remota permanecem desabilitadas na página até a validação final. O cliente exige referências positivas e timestamp inteiro para POST, permite PATCH parcial e preserva a distinção entre campo omitido e `observacoes: null`. Isso não afirma que o Xano valide a existência das referências, o vínculo Profissional–Especialidade, transições de status ou conflitos de agenda. O formulário remoto aceita um instante, sem término/duração confirmados.
 
-## Fontes dos catálogos e limite da relação
+## Fontes dos catálogos e relação confirmada
 
 Os scripts Xano presentes no repositório documentam estas respostas de leitura:
 
@@ -32,7 +32,28 @@ Os scripts Xano presentes no repositório documentam estas respostas de leitura:
 | Especialidades | `xano/api/especialidades/especialidades_GET.xs` | `id`, `nome` |
 | Status da Consulta | Contrato GET inspecionado pelo grupo no painel; não há script correspondente no snapshot `xano/api/` | `id`, `nome`, `created_at` |
 
-O campo `profissional.especialidade` está declarado como texto opcional e também é retornado como texto. O snapshot não contém campo `especialidade_id` na tabela Profissional, tabela de associação Profissional–Especialidade ou endpoint que retorne essa associação. Isso confirma a ausência de fonte relacional **no repositório**, não a inexistência de uma configuração remota fora dele. O texto não será convertido nem comparado com nomes do catálogo para criar uma associação. A página carrega os catálogos confirmados, mas mantém sem opções e desabilitado o seletor de Especialidade até a relação ser confirmada por contrato.
+| Profissional–Especialidade | Grupo `Profissional Especialidades`, GET `/profissional_especialidade` | `id`, `profissional_id`, `especialidade_id` |
+
+O campo `profissional.especialidade` continua sendo texto legado e não será
+convertido ou comparado com nomes do catálogo. A associação confirmada usa a
+tabela intermediária `profissional_especialidade`; o cliente exige inteiros
+positivos nos três identificadores, rejeita pares duplicados e a interface
+bloqueia associações cujas referências não estejam nos catálogos carregados.
+`XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL` e
+`XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true` são obrigatórios para a
+leitura; sem eles, o seletor permanece desabilitado.
+
+## Leituras repetidas e consistência do Dashboard
+
+As leituras de catálogos e vínculos usados pela página Consultas devem ser
+armazenadas em cache curto no frontend para evitar reruns do Streamlit e reduzir
+chamadas redundantes ao Xano. Uma resposta HTTP 429 não deve ser convertida em
+lista vazia nem repetida automaticamente; permanece visível como erro.
+
+O Dashboard não deve exigir `XANO_AUTHORIZATION` para endpoints públicos
+confirmados pelo mesmo contrato usado pelas páginas Pacientes e
+Profissionais. Ele continua com indicadores locais para Consultas e Status,
+identificados como SQLite, sem sincronização com a página remota de Consultas.
 
 ## Goals / Non-Goals
 
@@ -59,7 +80,10 @@ Alternativa considerada: derivar a API dos campos e regras da página SQLite ou 
 
 ### Carregar catálogos e relações somente por fonte autoritativa
 
-Pacientes, Profissionais, Especialidades e Status usados nos formulários devem vir de APIs existentes confirmadas. A relação Profissional–Especialidade só pode ser aplicada se o contrato fornecer uma relação identificável ou uma operação autorizada que a confirme. Um campo textual legado não será interpretado como identificador, e valores de status locais não serão tratados como catálogo remoto.
+Pacientes, Profissionais, Especialidades, Status e a relação
+Profissional–Especialidade usados nos formulários devem vir de APIs existentes
+confirmadas. Um campo textual legado não será interpretado como identificador,
+e valores de status locais não serão tratados como catálogo remoto.
 
 Alternativa considerada: reutilizar ou converter automaticamente os catálogos SQLite. Foi rejeitada para evitar misturar registros e identificadores de fontes diferentes.
 
@@ -91,7 +115,7 @@ Alternativa considerada: remover SQLite na mesma etapa em que Consultas passa a 
 
 - [O contrato citado pelo grupo não estar disponível à implementação ou divergir do ambiente] → registrar a fonte e os detalhes verificados antes de habilitar cada operação; bloquear chamadas não comprovadas.
 - [A resposta real divergir do contrato esperado] → validar a resposta e informar incompatibilidade, sem sucesso simulado nem fallback SQLite.
-- [A relação de especialidade ou o catálogo de status não ser exposto por contrato confirmado] → não inferir a relação nem hardcodear o catálogo local como remoto; manter a ação dependente indisponível até existir uma fonte autorizada.
+- [A resposta da relação conter referências inválidas ou duplicadas] → rejeitar a resposta ou bloquear as opções inválidas; não inferir vínculos pelo campo textual legado.
 - [A tela remota e o Dashboard mostrarem acervos diferentes durante a transição] → identificar claramente o Dashboard como local e não sincronizar dados implicitamente.
 - [A aplicação sem autenticação expor dados remotos] → não habilitar chamadas sem confirmação de autorização e dos requisitos do ambiente; nenhuma proteção dependerá somente da interface.
 - [Remoção prematura do banco interromper o Dashboard ou perder dados] → manter schema, arquivo, dados e inicialização até Change posterior verificar todas as dependências e aprovar a migração.

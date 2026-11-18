@@ -12,22 +12,36 @@ import requests
 
 XANO_PACIENTES_BASE_URL_ENV = "XANO_PACIENTES_BASE_URL"
 XANO_PROFISSIONAIS_BASE_URL_ENV = "XANO_PROFISSIONAIS_BASE_URL"
+XANO_PACIENTES_WRITE_ENABLED_ENV = "XANO_PACIENTES_WRITE_ENABLED"
+XANO_PROFISSIONAIS_WRITE_ENABLED_ENV = "XANO_PROFISSIONAIS_WRITE_ENABLED"
 XANO_ESPECIALIDADES_BASE_URL_ENV = "XANO_ESPECIALIDADES_BASE_URL"
 XANO_CONSULTAS_BASE_URL_ENV = "XANO_CONSULTAS_BASE_URL"
 XANO_STATUS_CONSULTA_BASE_URL_ENV = "XANO_STATUS_CONSULTA_BASE_URL"
+XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL_ENV = (
+    "XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL"
+)
+XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL_ENV = (
+    "XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL"
+)
+XANO_PRONTUARIOS_BASE_URL_ENV = "XANO_PRONTUARIOS_BASE_URL"
 XANO_AUTHORIZATION_ENV = "XANO_AUTHORIZATION"
 XANO_API_ENABLED_ENV = "XANO_API_ENABLED"
 XANO_ESPECIALIDADES_API_ENABLED_ENV = "XANO_ESPECIALIDADES_API_ENABLED"
 XANO_ESPECIALIDADES_WRITE_ENABLED_ENV = "XANO_ESPECIALIDADES_WRITE_ENABLED"
 XANO_CONSULTAS_API_ENABLED_ENV = "XANO_CONSULTAS_API_ENABLED"
 XANO_STATUS_CONSULTA_API_ENABLED_ENV = "XANO_STATUS_CONSULTA_API_ENABLED"
+XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV = (
+    "XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED"
+)
 XANO_CONSULTAS_WRITE_ENABLED_ENV = "XANO_CONSULTAS_WRITE_ENABLED"
 DEFAULT_PACIENTES_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:consultorio-cadastro-pacientes"
 )
+
 DEFAULT_PROFISSIONAIS_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:consultorio-cadastro-profissionais"
 )
+
 DEFAULT_ESPECIALIDADES_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:Cv9TB_MS"
 )
@@ -40,6 +54,7 @@ XanoResourceName = Literal[
     "especialidades",
     "consultas",
     "status_consulta",
+    "profissional_especialidade",
 ]
 
 CONSULTATION_PAYLOAD_FIELDS = (
@@ -83,16 +98,30 @@ def api_enabled() -> bool:
     return os.getenv(XANO_API_ENABLED_ENV, "").strip().lower() == "true"
 
 
+def patients_write_enabled() -> bool:
+    return (
+        os.getenv(XANO_PACIENTES_WRITE_ENABLED_ENV, "").strip().lower()
+        == "true"
+    )
+
+
+def professionals_write_enabled() -> bool:
+    return (
+        os.getenv(XANO_PROFISSIONAIS_WRITE_ENABLED_ENV, "").strip().lower()
+        == "true"
+    )
+
+
 def specialties_api_enabled() -> bool:
     return (
-        os.getenv(XANO_ESPECIALIDADES_API_ENABLED_ENV, "true").strip().lower()
+        os.getenv(XANO_ESPECIALIDADES_API_ENABLED_ENV, "").strip().lower()
         == "true"
     )
 
 
 def specialties_write_enabled() -> bool:
     return (
-        os.getenv(XANO_ESPECIALIDADES_WRITE_ENABLED_ENV, "true").strip().lower()
+        os.getenv(XANO_ESPECIALIDADES_WRITE_ENABLED_ENV, "").strip().lower()
         == "true"
     )
 
@@ -169,6 +198,10 @@ class XanoSettings:
     statuses: ResourceEndpoints = ResourceEndpoints(
         collection_path="status_consulta"
     )
+    professional_specialties_base_url: str | None = None
+    professional_specialties: ResourceEndpoints = ResourceEndpoints(
+        collection_path="profissional_especialidade"
+    )
 
     @classmethod
     def from_environment(cls) -> XanoSettings:
@@ -186,6 +219,10 @@ class XanoSettings:
             ),
             consultations_base_url=os.getenv(XANO_CONSULTAS_BASE_URL_ENV),
             statuses_base_url=os.getenv(XANO_STATUS_CONSULTA_BASE_URL_ENV),
+            professional_specialties_base_url=os.getenv(
+                XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL_ENV,
+                os.getenv(XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL_ENV),
+            ),
             patients=_endpoints_from_environment(
                 "PACIENTES",
                 ResourceEndpoints(
@@ -230,6 +267,9 @@ class XanoSettings:
             statuses=ResourceEndpoints(
                 collection_path="status_consulta"
             ),
+            professional_specialties=ResourceEndpoints(
+                collection_path="profissional_especialidade"
+            ),
             authorization=os.getenv(XANO_AUTHORIZATION_ENV),
         )
 
@@ -244,6 +284,8 @@ class XanoSettings:
             return self.consultations
         if resource == "status_consulta":
             return self.statuses
+        if resource == "profissional_especialidade":
+            return self.professional_specialties
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
     def base_url_for(self, resource: XanoResourceName) -> str | None:
@@ -257,6 +299,8 @@ class XanoSettings:
             return self.consultations_base_url
         if resource == "status_consulta":
             return self.statuses_base_url
+        if resource == "profissional_especialidade":
+            return self.professional_specialties_base_url
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
 
@@ -303,6 +347,7 @@ class XanoClient:
         resource: ResourceName,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
+        _require_resource_writes_enabled(resource)
         endpoints = self._settings.endpoints_for(resource)
         clean_payload = _validate_payload(
             resource,
@@ -321,6 +366,7 @@ class XanoClient:
         record_id: int,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
+        _require_resource_writes_enabled(resource)
         endpoints = self._settings.endpoints_for(resource)
         path = _format_item_path(
             endpoints.update_path, record_id, endpoints.identifier_parameter
@@ -330,6 +376,7 @@ class XanoClient:
         return _validate_record(resource, _parse_json(response))
 
     def delete_record(self, resource: ResourceName, record_id: int) -> None:
+        _require_resource_writes_enabled(resource)
         endpoints = self._settings.endpoints_for(resource)
         path = _format_item_path(
             endpoints.delete_path, record_id, endpoints.identifier_parameter
@@ -342,6 +389,7 @@ class XanoClient:
             )
 
     def list_specialties(self) -> list[dict[str, Any]]:
+        _require_specialties_api_enabled()
         endpoints = self._settings.endpoints_for("especialidades")
         response = self._send("especialidades", "GET", endpoints.collection_path)
         data = _parse_json(response)
@@ -350,6 +398,7 @@ class XanoClient:
         return [_validate_specialty_record(item) for item in data]
 
     def get_specialty(self, specialty_id: int) -> dict[str, Any]:
+        _require_specialties_api_enabled()
         endpoints = self._settings.endpoints_for("especialidades")
         path = _format_item_path(
             endpoints.item_path,
@@ -441,6 +490,29 @@ class XanoClient:
             )
         return [_validate_consultation_status(item) for item in data]
 
+    def list_professional_specialties(self) -> list[dict[str, int]]:
+        _require_professional_specialties_api_enabled()
+        endpoints = self._settings.endpoints_for("profissional_especialidade")
+        data = _parse_json(
+            self._send(
+                "profissional_especialidade",
+                "GET",
+                endpoints.collection_path,
+            )
+        )
+        if not isinstance(data, list):
+            raise XanoResponseError(
+                "A resposta de vínculos Profissional–Especialidade "
+                "do Xano não é uma lista."
+            )
+        records = [_validate_professional_specialty(item) for item in data]
+        pairs = {(item["profissional_id"], item["especialidade_id"]) for item in records}
+        if len(pairs) != len(records):
+            raise XanoResponseError(
+                "A resposta do Xano contém vínculos Profissional–Especialidade duplicados."
+            )
+        return records
+
     def create_consultation(
         self, payload: Mapping[str, Any]
     ) -> Any:
@@ -497,6 +569,9 @@ class XanoClient:
             "especialidades": XANO_ESPECIALIDADES_BASE_URL_ENV,
             "consultas": XANO_CONSULTAS_BASE_URL_ENV,
             "status_consulta": XANO_STATUS_CONSULTA_BASE_URL_ENV,
+            "profissional_especialidade": (
+                XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL_ENV
+            ),
         }[resource]
         url = _build_url(
             self._settings.base_url_for(resource), path, base_url_env
@@ -655,6 +730,28 @@ def _validate_specialty_record(value: Any) -> dict[str, Any]:
         raise XanoResponseError("O nome da especialidade retornado pelo Xano é inválido.")
 
     return {"id": record_id, "nome": name}
+
+
+def _require_specialties_api_enabled() -> None:
+    if not specialties_api_enabled():
+        raise XanoConfigurationError(
+            "A API de Especialidades está desabilitada pela configuração "
+            "XANO_ESPECIALIDADES_API_ENABLED."
+        )
+
+
+def _require_resource_writes_enabled(resource: ResourceName) -> None:
+    if resource == "pacientes":
+        enabled = patients_write_enabled()
+        environment_name = XANO_PACIENTES_WRITE_ENABLED_ENV
+    else:
+        enabled = professionals_write_enabled()
+        environment_name = XANO_PROFISSIONAIS_WRITE_ENABLED_ENV
+    if not enabled:
+        raise XanoConfigurationError(
+            f"As gravações remotas de {resource} estão desabilitadas pela "
+            f"configuração {environment_name}."
+        )
 
 
 def _require_specialty_writes_enabled() -> None:
@@ -817,6 +914,36 @@ def _validate_consultation_status(value: Any) -> dict[str, Any]:
     return {"id": record_id, "nome": name, "created_at": created_at}
 
 
+def _validate_professional_specialty(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        raise XanoResponseError(
+            "O vínculo Profissional–Especialidade retornado pelo Xano "
+            "não é um objeto."
+        )
+    association_id = value.get("id")
+    professional_id = value.get("profissional_id")
+    specialty_id = value.get("especialidade_id")
+    for field, field_value in (
+        ("id", association_id),
+        ("profissional_id", professional_id),
+        ("especialidade_id", specialty_id),
+    ):
+        if (
+            isinstance(field_value, bool)
+            or not isinstance(field_value, int)
+            or field_value < 1
+        ):
+            raise XanoResponseError(
+                f"O campo {field} do vínculo Profissional–Especialidade "
+                "é inválido."
+            )
+    return {
+        "id": association_id,
+        "profissional_id": professional_id,
+        "especialidade_id": specialty_id,
+    }
+
+
 def _format_consultation_path(
     path_template: str | None,
     consultation_id: int,
@@ -855,6 +982,15 @@ def consultation_status_api_enabled() -> bool:
     )
 
 
+def professional_specialties_api_enabled() -> bool:
+    return (
+        os.getenv(
+            XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV, ""
+        ).strip().lower()
+        == "true"
+    )
+
+
 def consultations_write_enabled() -> bool:
     return (
         os.getenv(XANO_CONSULTAS_WRITE_ENABLED_ENV, "")
@@ -877,6 +1013,15 @@ def _require_status_consulta_api_enabled() -> None:
         raise XanoConfigurationError(
             "A API de Status da Consulta está desabilitada pela configuração "
             f"{XANO_STATUS_CONSULTA_API_ENABLED_ENV}."
+        )
+
+
+def _require_professional_specialties_api_enabled() -> None:
+    if not professional_specialties_api_enabled():
+        raise XanoConfigurationError(
+            "A API de vínculos Profissional–Especialidade está desabilitada "
+            "pela configuração "
+            f"{XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV}."
         )
 
 
