@@ -56,6 +56,8 @@ class ConsultationsPageTests(unittest.TestCase):
         consultations_enabled: str = "false",
         statuses_enabled: str = "false",
         catalogs_enabled: str = "false",
+        consultations_write_enabled: str = "false",
+        relations_enabled: str = "false",
     ):
         values = {
             key: value
@@ -66,7 +68,16 @@ class ConsultationsPageTests(unittest.TestCase):
         values["XANO_STATUS_CONSULTA_API_ENABLED"] = statuses_enabled
         values["XANO_API_ENABLED"] = catalogs_enabled
         values["XANO_ESPECIALIDADES_API_ENABLED"] = catalogs_enabled
-        values["XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED"] = "false"
+        values["XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED"] = relations_enabled
+        values["XANO_CONSULTAS_WRITE_ENABLED"] = consultations_write_enabled
+        values["XANO_PACIENTES_BASE_URL"] = "https://patients.example.invalid/api"
+        values["XANO_PROFISSIONAIS_BASE_URL"] = "https://professionals.example.invalid/api"
+        values["XANO_ESPECIALIDADES_BASE_URL"] = "https://specialties.example.invalid/api"
+        values["XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL"] = (
+            "https://relations.example.invalid/api"
+        )
+        values["XANO_CONSULTAS_BASE_URL"] = "https://consultations.example.invalid/api"
+        values["XANO_STATUS_CONSULTA_BASE_URL"] = "https://statuses.example.invalid/api"
         return patch.dict(os.environ, values, clear=True)
 
     def _run_page(self) -> AppTest:
@@ -107,14 +118,6 @@ class ConsultationsPageTests(unittest.TestCase):
         list_patients.assert_not_called()
         list_professionals.assert_not_called()
         list_appointments.assert_not_called()
-        self.assertTrue(
-            any("Nenhuma consulta retornada pelo Xano" in item.value for item in page.info)
-        )
-        self.assertEqual(len(page.dataframe), 1)
-        self.assertEqual(
-            page.dataframe[0].value.to_dict("records"),
-            [{"id": 5, "nome": "Agendada", "created_at": 1700000000}],
-        )
         self.assertEqual(
             page.selectbox(key="xano_create_patient").options,
             ["Paciente sintético (#11)"],
@@ -130,7 +133,7 @@ class ConsultationsPageTests(unittest.TestCase):
         self.assertTrue(page.selectbox(key="xano_create_specialty").disabled)
         self.assertTrue(
             any(
-                "campo textual especialidade do Profissional não será usado"
+                "XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true"
                 in item.value
                 for item in page.warning
             )
@@ -165,8 +168,8 @@ class ConsultationsPageTests(unittest.TestCase):
         list_appointments.assert_not_called()
         self.assertTrue(
             any(
-                "1 consulta(s) retornada(s)" in item.value
-                for item in page.info
+                "Consultas cadastradas" in str(item.value)
+                for item in page.subheader
             )
         )
         self.assertFalse(
@@ -175,7 +178,7 @@ class ConsultationsPageTests(unittest.TestCase):
         self.assertEqual(len(page.dataframe), 1)
         self.assertEqual(len(page.exception), 0)
 
-    def test_status_only_integration_uses_exclusive_xano_mode(self):
+    def test_status_only_integration_does_not_enable_consultations(self):
         with self._environment(statuses_enabled="true"), patch.object(
             XanoClient, "list_consultations"
         ) as list_consultations, patch.object(
@@ -186,13 +189,13 @@ class ConsultationsPageTests(unittest.TestCase):
             page = self._run_page()
 
         list_consultations.assert_not_called()
-        list_statuses.assert_called_once_with()
+        list_statuses.assert_not_called()
         list_patients.assert_not_called()
         self.assertTrue(
-            any("leitura de Consultas no Xano está desabilitada" in item.value for item in page.info)
-        )
-        self.assertTrue(
-            any("Nenhum status de Consulta retornado pelo Xano" in item.value for item in page.info)
+            any(
+                "XANO_CONSULTAS_API_ENABLED=true" in item.value
+                for item in page.warning
+            )
         )
         self.assertEqual(len(page.exception), 0)
 
@@ -258,7 +261,7 @@ class ConsultationsPageTests(unittest.TestCase):
         )
         self.assertEqual(len(page.exception), 0)
 
-    def test_disabled_xano_preserves_existing_local_page(self):
+    def test_disabled_xano_preserves_no_sqlite_fallback(self):
         with self._environment(), patch(
             "services.database.list_patients", return_value=[]
         ) as list_patients, patch(
@@ -272,13 +275,16 @@ class ConsultationsPageTests(unittest.TestCase):
         ) as list_statuses:
             page = self._run_page()
 
-        list_patients.assert_called_once_with()
-        list_professionals.assert_called_once_with()
-        list_appointments.assert_called_once_with()
+        list_patients.assert_not_called()
+        list_professionals.assert_not_called()
+        list_appointments.assert_not_called()
         list_consultations.assert_not_called()
         list_statuses.assert_not_called()
         self.assertTrue(
-            any("Nenhuma consulta cadastrada neste banco SQLite local" in item.value for item in page.info)
+            any(
+                "XANO_CONSULTAS_API_ENABLED=true" in item.value
+                for item in page.warning
+            )
         )
         self.assertEqual(len(page.exception), 0)
 
@@ -403,6 +409,123 @@ class ConsultationsPageTests(unittest.TestCase):
         self.assertTrue(
             any("HTTP 429" in item.value for item in page.error)
         )
+        self.assertEqual(len(page.exception), 0)
+
+    def test_create_consultation_is_mocked_and_uses_confirmed_references(self):
+        associations = [
+            {"id": 61, "profissional_id": 21, "especialidade_id": 31}
+        ]
+        created = {**CONSULTATION, "observacoes": None}
+        with self._environment(
+            consultations_enabled="true",
+            statuses_enabled="true",
+            catalogs_enabled="true",
+            consultations_write_enabled="true",
+            relations_enabled="true",
+        ), patch.object(
+            XanoClient, "list_consultations", return_value=[]
+        ), patch.object(
+            XanoClient,
+            "list_consultation_statuses",
+            return_value=[{"id": 41, "nome": "Agendada", "created_at": 2}],
+        ), patch.object(
+            XanoClient,
+            "list_records",
+            side_effect=lambda resource: {
+                "pacientes": PATIENTS[1:],
+                "profissionais": PROFESSIONALS[1:],
+            }[resource],
+        ), patch.object(
+            XanoClient, "list_specialties", return_value=SPECIALTIES[1:]
+        ), patch.object(
+            XanoClient,
+            "list_professional_specialties",
+            return_value=associations,
+        ), patch.object(
+            XanoClient,
+            "create_consultation",
+            return_value=created,
+        ) as create:
+            page = self._run_page()
+            page.selectbox(key="xano_create_professional").set_value(21)
+            page.run()
+            page.selectbox(key="xano_create_patient").set_value(11)
+            page.selectbox(key="xano_create_specialty").set_value(31)
+            page.selectbox(key="xano_create_status").set_value(41)
+            page.button(
+                key="FormSubmitter:xano_create_consultation-Cadastrar consulta"
+            ).click()
+            page.run()
+
+        create.assert_called_once()
+        payload = create.call_args.args[0]
+        self.assertEqual(payload["paciente_id"], 11)
+        self.assertEqual(payload["profissional_id"], 21)
+        self.assertEqual(payload["especialidade_id"], 31)
+        self.assertEqual(payload["status_consulta_id"], 41)
+        self.assertIsInstance(payload["data_e_hora_do_agendamento"], int)
+        self.assertEqual(len(page.exception), 0)
+
+    def test_edit_status_and_delete_are_mocked(self):
+        associations = [
+            {"id": 61, "profissional_id": 21, "especialidade_id": 31}
+        ]
+        statuses = [
+            {"id": 41, "nome": "Agendada", "created_at": 2},
+            {"id": 42, "nome": "Realizada", "created_at": 3},
+        ]
+        with self._environment(
+            consultations_enabled="true",
+            statuses_enabled="true",
+            catalogs_enabled="true",
+            consultations_write_enabled="true",
+            relations_enabled="true",
+        ), patch.object(
+            XanoClient, "list_consultations", return_value=[CONSULTATION]
+        ), patch.object(
+            XanoClient,
+            "list_consultation_statuses",
+            return_value=statuses,
+        ), patch.object(
+            XanoClient,
+            "list_records",
+            side_effect=lambda resource: {
+                "pacientes": PATIENTS[1:],
+                "profissionais": PROFESSIONALS[1:],
+            }[resource],
+        ), patch.object(
+            XanoClient, "list_specialties", return_value=SPECIALTIES[1:]
+        ), patch.object(
+            XanoClient,
+            "list_professional_specialties",
+            return_value=associations,
+        ), patch.object(
+            XanoClient, "get_consultation", return_value=CONSULTATION
+        ), patch.object(
+            XanoClient,
+            "update_consultation",
+            return_value={**CONSULTATION, "status_consulta_id": 42},
+        ) as update, patch.object(
+            XanoClient, "delete_consultation"
+        ) as delete:
+            page = self._run_page()
+            page.selectbox(key="xano_edit_consultation_id").set_value(52)
+            page.run()
+            page.button(key="xano_load_consultation").click()
+            page.run()
+            self.assertEqual(
+                page.selectbox(key="xano_edit_status").options,
+                ["Agendada (#41)", "Realizada (#42)"],
+            )
+            page.checkbox(
+                key="xano_delete_confirm_52"
+            ).set_value(True)
+            page.run()
+            page.button(key="xano_delete_consultation").click()
+            page.run()
+
+        update.assert_not_called()
+        delete.assert_called_once_with(52)
         self.assertEqual(len(page.exception), 0)
 
 

@@ -745,8 +745,20 @@ class TestXanoClient(unittest.TestCase):
             "status_consulta_id": 41,
             "observacoes": None,
         }
-        created_response = {"synthetic_response": "create"}
-        updated_response = {"synthetic_response": "update"}
+        created_response = {
+            "id": 52,
+            "paciente_id": 11,
+            "profissional_id": 21,
+            "especialidade_id": 31,
+            "data_e_hora_do_agendamento": 1762700000,
+            "status_consulta_id": 41,
+            "observacoes": "",
+        }
+        updated_response = {
+            **created_response,
+            "status_consulta_id": 41,
+            "observacoes": None,
+        }
         self.transport.request.side_effect = [
             self._response(created_response),
             self._response(updated_response),
@@ -843,13 +855,22 @@ class TestXanoClient(unittest.TestCase):
             },
             clear=True,
         ):
+            consultation_response = {
+                "id": 52,
+                "paciente_id": 11,
+                "profissional_id": 21,
+                "especialidade_id": 31,
+                "data_e_hora_do_agendamento": 1768480200000,
+                "status_consulta_id": 41,
+                "observacoes": None,
+            }
             self.transport.request.return_value = self._response(
-                {"synthetic_response": "update"}
+                consultation_response
             )
             client.update_consultation(52, {"status_consulta_id": 41})
             self.assertEqual(
                 client.update_consultation(52, {"observacoes": None}),
-                {"synthetic_response": "update"},
+                consultation_response,
             )
             self.assertEqual(
                 [
@@ -897,12 +918,21 @@ class TestXanoClient(unittest.TestCase):
                 with self.subTest(field=field):
                     with self.assertRaises(XanoResponseError):
                         client.create_consultation(invalid_payload)
+            consultation_response = {
+                "id": 52,
+                "paciente_id": 11,
+                "profissional_id": 21,
+                "especialidade_id": 31,
+                "data_e_hora_do_agendamento": 1768480200000,
+                "status_consulta_id": 41,
+                "observacoes": None,
+            }
             self.transport.request.return_value = self._response(
-                {"synthetic_response": "create"}
+                consultation_response
             )
-            client.create_consultation(
+            self.assertEqual(client.create_consultation(
                 {**valid_payload, "observacoes": None}
-            )
+            ), consultation_response)
 
         self.assertEqual(self.transport.request.call_count, 1)
         self.assertEqual(

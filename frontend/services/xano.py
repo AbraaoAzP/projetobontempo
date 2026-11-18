@@ -515,7 +515,7 @@ class XanoClient:
 
     def create_consultation(
         self, payload: Mapping[str, Any]
-    ) -> Any:
+    ) -> dict[str, Any]:
         _require_consultation_writes_enabled()
         endpoints = self._settings.endpoints_for("consultas")
         clean_payload = _validate_consultation_payload(
@@ -528,13 +528,13 @@ class XanoClient:
             endpoints.create_path,
             clean_payload,
         )
-        return _parse_json(response)
+        return _validate_consultation_record(_parse_json(response))
 
     def update_consultation(
         self,
         consultation_id: int,
         payload: Mapping[str, Any],
-    ) -> Any:
+    ) -> dict[str, Any]:
         _require_consultation_writes_enabled()
         endpoints = self._settings.endpoints_for("consultas")
         path = _format_consultation_path(
@@ -544,7 +544,7 @@ class XanoClient:
         )
         clean_payload = _validate_consultation_payload(payload)
         response = self._send("consultas", "PATCH", path, clean_payload)
-        return _parse_json(response)
+        return _validate_consultation_record(_parse_json(response))
 
     def delete_consultation(self, consultation_id: int) -> None:
         _require_consultation_writes_enabled()

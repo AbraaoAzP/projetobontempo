@@ -1,8 +1,8 @@
 ## Context
 
-Consulte [proposal.md](./proposal.md) para a motivação e o escopo. A página Consultas e o catálogo de status ainda usam SQLite. O Dashboard também lê consultas e status locais. Os arquivos versionados de Xano não contêm definições de APIs ou tabelas para Consultas e Status da Consulta; esta ausência não contradiz contratos confirmados fora do repositório, mas seus detalhes não devem ser inferidos a partir do modelo SQLite.
+Consulte [proposal.md](./proposal.md) para a motivação e o escopo. A implementação atual já oferece GET da coleção, GET por ID, catálogos e formulários preparatórios, mas mantém cadastro, edição e exclusão desabilitados. A página também possui um ramo legado SQLite que deve ser removido.
 
-Esta integração ocorre numa aplicação Streamlit sem autenticação própria. O cliente HTTP Xano existente e os padrões de configuração e testes do projeto devem ser reutilizados. Nenhuma escrita remota será executada como parte da elaboração ou validação desta Change.
+Os contratos conhecidos confirmam POST, PATCH e DELETE de Consulta, mas o frontend ainda não pode declarar a integridade final do backend sobre conflito, duração ou autorização. O POST usa referências positivas e timestamp Unix em milissegundos; PATCH aceita campos parciais; DELETE usa o identificador da consulta. Até confirmação prática do ambiente, as escritas permanecem desabilitadas.
 
 ## Contratos identificados no painel
 
@@ -20,6 +20,10 @@ Os endpoints abaixo foram informados e inspecionados pelo grupo no painel do Xan
 O cliente valida nos registros de Consulta o ID, as quatro referências, o timestamp e, quando presente, `observacoes`; a ausência de `observacoes` permanece distinta de `null`. O timestamp é convertido entre o horário local `America/Sao_Paulo` e Unix em milissegundos. A atualização de status usa `status_consulta_id` no PATCH de Consulta; não há endpoint separado de escrita para Status.
 
 As operações de escrita remota permanecem desabilitadas na página até a validação final. O cliente exige referências positivas e timestamp inteiro para POST, permite PATCH parcial e preserva a distinção entre campo omitido e `observacoes: null`. Isso não afirma que o Xano valide a existência das referências, o vínculo Profissional–Especialidade, transições de status ou conflitos de agenda. O formulário remoto aceita um instante, sem término/duração confirmados.
+
+### Validação remota controlada em 2026-11-18
+
+Após autorização explícita, um registro sintético foi criado e removido pelo CRUD real do Xano. POST e GET confirmaram criação e leitura; PATCH e GET confirmaram atualização; DELETE recebeu resposta 2xx aceita pelo cliente; um GET posterior recebeu HTTP 404 real, confirmando a remoção. O registro temporário ID 1 foi excluído ao final. Nenhum registro preexistente foi alterado e a flag persistida de escrita permaneceu `false`. Os resultados não comprovam autorização por perfil, garantia backend de referência, disponibilidade, duração ou conflito de agenda.
 
 ## Fontes dos catálogos e relação confirmada
 
@@ -59,22 +63,23 @@ identificados como SQLite, sem sincronização com a página remota de Consultas
 
 **Goals:**
 
-- Integrar a página de Consultas e o catálogo de Status usando exclusivamente os contratos Xano existentes e confirmados.
-- Manter separadas as fontes remota da página e local do Dashboard, com estados de erro explícitos e sem fallback silencioso.
-- Preservar o banco, os dados e a inicialização SQLite enquanto o Dashboard ou outra dependência local ainda os utilizar.
+- Entregar um CRUD completo da página Consultas usando exclusivamente APIs Xano.
+- Usar somente pacientes, profissionais, especialidades, status e vínculos retornados pelo Xano.
+- Validar referências, campos obrigatórios, data, horário e conflito no frontend até que uma garantia funcional equivalente exista no backend.
+- Preservar o banco SQLite enquanto houver dependências reais fora da página Consultas.
 
 **Non-Goals:**
 
 - Criar ou alterar endpoints, tabelas, permissões, scripts ou dados no Xano.
-- Migrar, sincronizar, excluir ou gravar dados locais nesta Change.
-- Alterar o Dashboard, autenticação ou o controle de acesso do backend.
-- Presumir validações ou garantias de integridade do Xano que não constem de seus contratos.
+- Executar operações remotas sem autorização explícita.
+- Implementar autenticação, prontuários ou remover SQLite globalmente.
+- Presumir conflito, disponibilidade ou duração não confirmados pelo backend.
 
 ## Decisions
 
 ### Usar contratos Xano como única fonte para operações remotas
 
-Reutilizar o cliente HTTP existente em `frontend/services/xano.py`. Antes de habilitar cada operação, registrar sua rota, método, parâmetros, campos e forma de resposta conforme a fonte contratual confirmada pelo grupo. Os artefatos desta Change não enumeram esses detalhes, pois não constam nos arquivos versionados. Operação sem contrato verificável permanece indisponível; não se presume rota, payload, resposta, relação, autenticação ou garantia do backend.
+Reutilizar `frontend/services/xano.py`. POST, PATCH e DELETE só serão habilitados depois da confirmação dos detalhes reais da API e da autorização remota. Operação sem contrato verificável permanece indisponível.
 
 Alternativa considerada: derivar a API dos campos e regras da página SQLite ou da Change de modelagem. Foi rejeitada porque o modelo local e a especificação conceitual não comprovam o contrato remoto.
 

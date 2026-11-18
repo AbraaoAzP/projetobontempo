@@ -39,7 +39,7 @@ A interface SHALL carregar Pacientes, Profissionais, Especialidades e Status exc
 
 ### Requirement: Gerenciar Consultas e seus status conforme o contrato
 
-A página SHALL oferecer as operações CRUD de Consulta e atualização de Status que estejam definidas pelos contratos Xano confirmados para esta integração. A interface SHALL usar os valores e campos efetivamente retornados ou aceitos por esses contratos, sem fixar campos, formatos ou valores de status presumidos. Erros retornados pela API SHALL ser apresentados como falha; a interface SHALL NOT declarar que uma regra de integridade, transição, conflito ou persistência é garantida pelo Xano sem evidência contratual.
+A página SHALL oferecer cadastro, consulta individual, edição e exclusão de Consulta pelas operações Xano confirmadas. SHALL carregar Pacientes, Profissionais, Especialidades e Status somente de APIs remotas válidas e SHALL permitir uma referência somente quando sua entidade existir e o vínculo Profissional–Especialidade estiver confirmado. SHALL validar campos obrigatórios, data, horário e sobreposição antes da escrita e SHALL considerar todas as garantias definitivas de integridade dependentes do backend até serem comprovadas por contrato. Erros retornados pela API SHALL ser apresentados como falha; a interface SHALL NOT declarar sucesso, integridade ou persistência sem resposta compatível.
 
 #### Scenario: Listar e apresentar consultas remotas
 
@@ -60,6 +60,29 @@ A página SHALL oferecer as operações CRUD de Consulta e atualização de Stat
 
 - **WHEN** a API rejeita uma operação, inclusive por referência, conflito ou transição
 - **THEN** a interface apresenta a falha sem declarar sucesso nem afirmar garantias além das documentadas pelo backend
+
+#### Scenario: Cadastro completo confirmado
+
+- **WHEN** a pessoa envia uma consulta com paciente, profissional, especialidade vinculada, status, data e horário válidos
+- **THEN** a interface envia POST ao Xano somente quando a escrita estiver habilitada e apresenta o resultado efetivamente recebido
+
+#### Scenario: Consulta individual por identificador
+
+- **WHEN** a pessoa solicita uma consulta por ID
+- **THEN** a interface executa GET por ID e apresenta ou rejeita o registro sem combinar fontes locais
+
+#### Scenario: Editar consulta existente
+
+- **WHEN** a pessoa altera uma consulta e envia campos válidos
+- **THEN** a interface executa PATCH com a representação confirmada pelo contrato e comunica a resposta ou o erro
+
+#### Scenario: Excluir consulta com confirmação
+
+- **WHEN** a pessoa cancela ou não confirma a exclusão
+- **THEN** nenhuma operação DELETE é enviada
+
+- **WHEN** a pessoa confirma a exclusão e a escrita está habilitada
+- **THEN** a interface envia DELETE somente para o ID selecionado e informa sucesso ou falha conforme a resposta
 
 ### Requirement: Apresentar falhas e estados sem mascarar a origem
 
@@ -82,7 +105,7 @@ A interface SHALL distinguir configuração ou habilitação ausente, lista vazi
 
 ### Requirement: Preservar dados locais e a fonte do Dashboard
 
-A integração SHALL NOT migrar, sincronizar, sobrescrever ou excluir registros SQLite. A página Consultas SHALL usar somente a fonte Xano quando a operação remota estiver habilitada, sem fallback silencioso ao SQLite. Enquanto o Dashboard depender dos dados locais, SHALL continuar consultando o SQLite e identificando esses indicadores e listagens como locais. Esta mudança SHALL NOT remover o arquivo, schema, serviço ou inicialização necessários ao Dashboard.
+A integração SHALL NOT migrar, sincronizar, sobrescrever ou excluir registros SQLite. A página Consultas SHALL NOT consultar ou usar SQLite como fallback em nenhum estado de configuração ou falha. Enquanto o Dashboard depender dos dados locais, SHALL continuar consultando o SQLite e identificando esses indicadores e listagens como locais. Esta mudança SHALL NOT remover o arquivo, schema, serviço ou inicialização necessários ao Dashboard.
 
 #### Scenario: Consultar a página após habilitar Xano
 

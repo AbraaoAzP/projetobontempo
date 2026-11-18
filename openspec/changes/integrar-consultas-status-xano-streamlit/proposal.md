@@ -1,31 +1,33 @@
 ## Why
 
-A página Consultas ainda grava e consulta dados exclusivamente no SQLite, enquanto o Xano já disponibiliza endpoints de Consulta e Status da Consulta. Integrar a agenda ao backend permitirá usar os registros reais de Pacientes, Profissionais, Especialidades e Status sem sincronizar nem alterar os dados locais existentes.
+As consultas já possuem leituras preparadas no Xano, mas o módulo ainda não oferece um CRUD utilizável e ainda mantém um caminho SQLite quando as leituras Xano estão desabilitadas. A Change precisa concluir a operação funcional completa sem confundir listagem remota ou testes automatizados com validação real do módulo.
 
 ## What Changes
 
-- Integrar o CRUD da página Consultas às operações já existentes e confirmadas do Xano, sem criar, publicar ou alterar endpoints remotos.
-- Carregar do Xano pacientes, profissionais, especialidades e status para os formulários; confirmar como a relação profissional-especialidade é fornecida antes de filtrar opções.
-- Preservar validações de data, horário, referências, associação de especialidade e conflitos, respeitando o contrato e as garantias implementadas no backend.
-- Apresentar estados claros de sucesso, lista vazia, configuração ausente, erro HTTP, transporte e resposta incompatível.
-- Manter as gravações remotas desabilitadas em testes automatizados e usar transporte HTTP simulado. Não enviar POST, PATCH ou DELETE reais sem autorização específica.
-- Manter o SQLite, seus dados e a inicialização necessária ao Dashboard; não migrar nem remover o banco nesta mudança.
+- Completar cadastro, consulta individual, edição e exclusão de consultas pela API Xano confirmada.
+- Remover o fallback SQLite da página Consultas, preservando o banco somente para módulos e indicadores que ainda dependam dele.
+- Validar todos os campos obrigatórios, referências válidas, vínculo profissional-especialidade, data, horário e conflitos antes de enviar escritas.
+- Converter data e horário locais de Streamlit para timestamp Unix em milissegundos e preservar `observacoes` conforme o contrato.
+- Confirmar respostas, erros HTTP, transporte, resposta incompatível e HTTP 429 sem repetir requisições.
+- Exigir confirmação explícita na exclusão e manter escritas remotas desabilitadas por configuração até autorização explícita.
+- Atualizar os testes automatizados para cobrir o CRUD com transporte e Streamlit simulados, sem escritas reais.
 
-**Fora do escopo:** alterar tabelas, endpoints, permissões ou configurações remotas do Xano; migrar ou excluir dados SQLite; modificar o Dashboard ou autenticação Admin/Médico, exceto correções estritamente necessárias para evitar erros.
+**Fora do escopo:** alterar endpoints, tabelas, permissões ou configurações remotas; autenticação ou perfis; módulos de Prontuários; migração global do SQLite; POST/PATCH/DELETE reais sem autorização.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `consultas`: operações de Consulta pela API Xano, catálogo de Status da Consulta, seleção de entidades relacionadas e validações da agenda na interface.
+- Nenhuma nova capability; a funcionalidade permanece dentro de `consultas`.
 
 ### Modified Capabilities
 
-- `interface-web`: permitir que a página Consultas use contratos Xano confirmados, preservando Dashboard, autenticação fora de escopo e as demais páginas.
+- `consultas`: o comportamento passa de preparação de leitura para CRUD completo Xano, sem fallback SQLite e com validações de conflito.
+- `interface-web`: a página Consultas deixa de possuir dependência ou apresentação legada SQLite.
 
 ## Impact
 
-- Código potencialmente afetado: `frontend/pages/4_Consultas.py`, `frontend/services/xano.py` e testes da página/cliente Xano.
-- Configuração: variáveis externas para URLs e habilitação das APIs de Consultas e Status, definidas somente após confirmação dos contratos.
-- Contratos identificados no painel estão registrados em `design.md`: campos da tabela Consulta, GET da coleção e por ID, inputs e rotas de POST/PATCH/DELETE, timestamp Unix em milissegundos, referências não nulas e `observacoes` anulável. Permanecem pendentes a relação Profissional–Especialidade, a semântica de nulo/vazio no PATCH e as garantias do backend sobre referências, status e conflitos. As escritas da página continuam desabilitadas até a validação final.
-- O Dashboard e `frontend/services/database.py` continuam dependendo do SQLite; a remoção do banco exige etapa posterior e não é parte desta integração.
+- Código principal: `frontend/pages/4_Consultas.py`, `frontend/services/xano.py` e `frontend/services/xano_cache.py`.
+- Testes principais: `frontend/tests/test_consultations_page.py` e `frontend/tests/test_xano.py`.
+- Configuração: `XANO_CONSULTAS_API_ENABLED=true` e `XANO_CONSULTAS_WRITE_ENABLED=false` por padrão até autorização específica.
+- Persistência: `frontend/data/bontempo_demo.sqlite3` e `frontend/services/database.py` permanecem preservados enquanto houver dependências externas, mas não serão usados pela página Consultas.
