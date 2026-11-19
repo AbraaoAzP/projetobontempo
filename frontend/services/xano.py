@@ -24,6 +24,8 @@ XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL_ENV = (
     "XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL"
 )
 XANO_PRONTUARIOS_BASE_URL_ENV = "XANO_PRONTUARIOS_BASE_URL"
+XANO_PRONTUARIOS_API_ENABLED_ENV = "XANO_PRONTUARIOS_API_ENABLED"
+XANO_PRONTUARIOS_WRITE_ENABLED_ENV = "XANO_PRONTUARIOS_WRITE_ENABLED"
 XANO_AUTHORIZATION_ENV = "XANO_AUTHORIZATION"
 XANO_API_ENABLED_ENV = "XANO_API_ENABLED"
 XANO_ESPECIALIDADES_API_ENABLED_ENV = "XANO_ESPECIALIDADES_API_ENABLED"
@@ -58,6 +60,7 @@ XanoResourceName = Literal[
     "consultas",
     "status_consulta",
     "profissional_especialidade",
+    "prontuarios",
 ]
 
 CONSULTATION_PAYLOAD_FIELDS = (
@@ -209,6 +212,15 @@ class XanoSettings:
         delete_path="profissional_especialidade/{profissional_especialidade_id}",
         identifier_parameter="profissional_especialidade_id",
     )
+    prontuarios_base_url: str | None = None
+    prontuarios: ResourceEndpoints = ResourceEndpoints(
+        collection_path="prontuario",
+        item_path="prontuario/{prontuario_id}",
+        create_path="prontuario",
+        update_path="prontuario/{prontuario_id}",
+        delete_path="prontuario/{prontuario_id}",
+        identifier_parameter="prontuario_id",
+    )
 
     @classmethod
     def from_environment(cls) -> XanoSettings:
@@ -281,6 +293,15 @@ class XanoSettings:
                 delete_path="profissional_especialidade/{profissional_especialidade_id}",
                 identifier_parameter="profissional_especialidade_id",
             ),
+            prontuarios_base_url=os.getenv(XANO_PRONTUARIOS_BASE_URL_ENV),
+            prontuarios=ResourceEndpoints(
+                collection_path="prontuario",
+                item_path="prontuario/{prontuario_id}",
+                create_path="prontuario",
+                update_path="prontuario/{prontuario_id}",
+                delete_path="prontuario/{prontuario_id}",
+                identifier_parameter="prontuario_id",
+            ),
             authorization=os.getenv(XANO_AUTHORIZATION_ENV),
         )
 
@@ -297,6 +318,8 @@ class XanoSettings:
             return self.statuses
         if resource == "profissional_especialidade":
             return self.professional_specialties
+        if resource == "prontuarios":
+            return self.prontuarios
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
     def base_url_for(self, resource: XanoResourceName) -> str | None:
@@ -312,6 +335,8 @@ class XanoSettings:
             return self.statuses_base_url
         if resource == "profissional_especialidade":
             return self.professional_specialties_base_url
+        if resource == "prontuarios":
+            return self.prontuarios_base_url
         raise ValueError(f"Recurso Xano não suportado: {resource}")
 
 
@@ -574,6 +599,111 @@ class XanoClient:
         )
         self._send("profissional_especialidade", "DELETE", path)
 
+    def list_prontuarios(self) -> list[dict[str, Any]]:
+        _require_prontuarios_api_enabled()
+        endpoints = self._settings.endpoints_for("prontuarios")
+        data = _parse_json(
+            self._send("prontuarios", "GET", endpoints.collection_path)
+        )
+        if not isinstance(data, list):
+            raise XanoResponseError(
+                "A resposta de Prontuários do Xano não é uma lista."
+            )
+        return [_validate_prontuario_record(item) for item in data]
+
+    def get_prontuario(self, prontuario_id: int) -> dict[str, Any]:
+        _require_prontuarios_api_enabled()
+        if (
+            isinstance(prontuario_id, bool)
+            or not isinstance(prontuario_id, int)
+            or prontuario_id < 1
+        ):
+            raise XanoResponseError(
+                "O identificador do Prontuário é inválido."
+            )
+        endpoints = self._settings.endpoints_for("prontuarios")
+        path = _format_item_path(
+            endpoints.item_path,
+            prontuario_id,
+            endpoints.identifier_parameter,
+        )
+        record = _validate_prontuario_record(
+            _parse_json(self._send("prontuarios", "GET", path))
+        )
+        if record["id"] != prontuario_id:
+            raise XanoResponseError(
+                "O Xano retornou um Prontuário diferente do ID solicitado."
+            )
+        return record
+
+    def create_prontuario(
+        self,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        _require_prontuario_writes_enabled()
+        clean_payload = _validate_prontuario_payload(
+            payload,
+            require_references=True,
+        )
+        endpoints = self._settings.endpoints_for("prontuarios")
+        response = self._send(
+            "prontuarios",
+            "POST",
+            endpoints.create_path,
+            clean_payload,
+        )
+        return _validate_prontuario_record(_parse_json(response))
+
+    def update_prontuario(
+        self,
+        prontuario_id: int,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        _require_prontuario_writes_enabled()
+        if (
+            isinstance(prontuario_id, bool)
+            or not isinstance(prontuario_id, int)
+            or prontuario_id < 1
+        ):
+            raise XanoResponseError(
+                "O identificador do Prontuário é inválido."
+            )
+        clean_payload = _validate_prontuario_payload(
+            payload,
+            require_references=False,
+        )
+        endpoints = self._settings.endpoints_for("prontuarios")
+        path = _format_item_path(
+            endpoints.update_path,
+            prontuario_id,
+            endpoints.identifier_parameter,
+        )
+        response = self._send(
+            "prontuarios",
+            "PATCH",
+            path,
+            clean_payload,
+        )
+        return _validate_prontuario_record(_parse_json(response))
+
+    def delete_prontuario(self, prontuario_id: int) -> None:
+        _require_prontuario_writes_enabled()
+        if (
+            isinstance(prontuario_id, bool)
+            or not isinstance(prontuario_id, int)
+            or prontuario_id < 1
+        ):
+            raise XanoResponseError(
+                "O identificador do Prontuário é inválido."
+            )
+        endpoints = self._settings.endpoints_for("prontuarios")
+        path = _format_item_path(
+            endpoints.delete_path,
+            prontuario_id,
+            endpoints.identifier_parameter,
+        )
+        self._send("prontuarios", "DELETE", path)
+
     def create_consultation(
         self, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
@@ -633,6 +763,7 @@ class XanoClient:
             "profissional_especialidade": (
                 XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL_ENV
             ),
+            "prontuarios": XANO_PRONTUARIOS_BASE_URL_ENV,
         }[resource]
         url = _build_url(
             self._settings.base_url_for(resource), path, base_url_env
@@ -1005,6 +1136,143 @@ def _validate_professional_specialty(value: Any) -> dict[str, int]:
     }
 
 
+def _validate_prontuario_record(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise XanoResponseError(
+            "O Prontuário retornado pelo Xano não é um objeto."
+        )
+
+    record_id = value.get("id")
+    paciente_id = value.get("paciente_id")
+    profissional_id = value.get("profissional_id")
+    for field, field_value in (
+        ("id", record_id),
+        ("paciente_id", paciente_id),
+        ("profissional_id", profissional_id),
+    ):
+        if (
+            isinstance(field_value, bool)
+            or not isinstance(field_value, int)
+            or field_value < 1
+        ):
+            raise XanoResponseError(
+                f"O campo {field} do Prontuário é inválido."
+            )
+
+    numero_prontuario = value.get("numero_prontuario")
+    observacoes = value.get("observacoes")
+    if numero_prontuario is not None and not isinstance(numero_prontuario, str):
+        raise XanoResponseError(
+            "O campo numero_prontuario do Prontuário é inválido."
+        )
+    if observacoes is not None and not isinstance(observacoes, str):
+        raise XanoResponseError(
+            "O campo observacoes do Prontuário é inválido."
+        )
+
+    created_at = value.get("created_at")
+    data_atualizacao = value.get("data_da_atualizacao")
+    for field, field_value in (
+        ("created_at", created_at),
+        ("data_da_atualizacao", data_atualizacao),
+    ):
+        if field_value is not None and (
+            isinstance(field_value, bool)
+            or not isinstance(field_value, (int, float))
+        ):
+            raise XanoResponseError(
+                f"O campo {field} do Prontuário é inválido."
+            )
+
+    return {
+        "id": record_id,
+        "created_at": created_at,
+        "paciente_id": paciente_id,
+        "profissional_id": profissional_id,
+        "numero_prontuario": numero_prontuario,
+        "observacoes": observacoes,
+        "data_da_atualizacao": data_atualizacao,
+    }
+
+
+def _validate_prontuario_payload(
+    payload: Mapping[str, Any],
+    *,
+    require_references: bool,
+) -> dict[str, Any]:
+    if not isinstance(payload, Mapping):
+        raise XanoResponseError(
+            "Os dados do Prontuário precisam ser um objeto."
+        )
+
+    allowed_fields = {
+        "paciente_id",
+        "profissional_id",
+        "numero_prontuario",
+        "observacoes",
+        "data_da_atualizacao",
+    }
+    unknown_fields = set(payload).difference(allowed_fields)
+    if unknown_fields:
+        raise XanoResponseError(
+            "Os dados enviados contêm campos não permitidos para Prontuário."
+        )
+    if not payload:
+        raise XanoResponseError(
+            "Informe pelo menos um campo para atualizar o Prontuário."
+        )
+
+    clean_payload: dict[str, Any] = {}
+    for field in (
+        "paciente_id",
+        "profissional_id",
+        "numero_prontuario",
+        "observacoes",
+        "data_da_atualizacao",
+    ):
+        if field not in payload:
+            continue
+        value = payload[field]
+        if field in ("paciente_id", "profissional_id"):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+            ):
+                raise XanoResponseError(
+                    f"O campo {field} do Prontuário é inválido."
+                )
+            clean_payload[field] = value
+        elif field in ("numero_prontuario", "observacoes"):
+            if value is not None and not isinstance(value, str):
+                raise XanoResponseError(
+                    f"O campo {field} do Prontuário é inválido."
+                )
+            if isinstance(value, str):
+                value = value.strip()
+            clean_payload[field] = value
+        else:
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+            ):
+                raise XanoResponseError(
+                    "O campo data_da_atualizacao do Prontuário é inválido."
+                )
+            clean_payload[field] = value
+
+    if require_references:
+        if "paciente_id" not in clean_payload:
+            raise XanoResponseError(
+                "O campo paciente_id é obrigatório no cadastro."
+            )
+        if "profissional_id" not in clean_payload:
+            raise XanoResponseError(
+                "O campo profissional_id é obrigatório no cadastro."
+            )
+    return clean_payload
+
+
 def _format_consultation_path(
     path_template: str | None,
     consultation_id: int,
@@ -1070,6 +1338,24 @@ def consultations_write_enabled() -> bool:
     )
 
 
+def prontuarios_api_enabled() -> bool:
+    return (
+        os.getenv(XANO_PRONTUARIOS_API_ENABLED_ENV, "")
+        .strip()
+        .lower()
+        == "true"
+    )
+
+
+def prontuarios_write_enabled() -> bool:
+    return (
+        os.getenv(XANO_PRONTUARIOS_WRITE_ENABLED_ENV, "")
+        .strip()
+        .lower()
+        == "true"
+    )
+
+
 def _require_consultations_api_enabled() -> None:
     if not consultations_api_enabled():
         raise XanoConfigurationError(
@@ -1102,6 +1388,23 @@ def _require_professional_specialty_writes_enabled() -> None:
             "As gravações de vínculos Profissional–Especialidade estão "
             "desabilitadas pela configuração "
             f"{XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV}."
+        )
+
+
+def _require_prontuarios_api_enabled() -> None:
+    if not prontuarios_api_enabled():
+        raise XanoConfigurationError(
+            "A API de Prontuários está desabilitada pela configuração "
+            f"{XANO_PRONTUARIOS_API_ENABLED_ENV}."
+        )
+
+
+def _require_prontuario_writes_enabled() -> None:
+    _require_prontuarios_api_enabled()
+    if not prontuarios_write_enabled():
+        raise XanoConfigurationError(
+            "As gravações de Prontuários estão desabilitadas pela configuração "
+            f"{XANO_PRONTUARIOS_WRITE_ENABLED_ENV}."
         )
 
 

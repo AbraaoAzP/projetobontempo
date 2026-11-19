@@ -261,12 +261,18 @@ appointments_page = st.Page(
     title="Consultas",
     icon=":material/calendar_month:",
 )
+prontuarios_page = st.Page(
+    "pages/5_Prontuarios.py",
+    title="Prontuários",
+    icon=":material/assignment:",
+)
 pages = [
     st.Page(show_home, title="Início", icon=":material/home:", default=True),
     patients_page,
     professionals_page,
     specialties_page,
     appointments_page,
+    prontuarios_page,
 ]
 
 st.navigation(pages, position="sidebar").run()

@@ -85,11 +85,27 @@ As leituras podem ser habilitadas separadamente das gravações:
 - Profissional–Especialidade:
   `XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true` e
   `XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED=false`
+- Prontuários:
+  `XANO_PRONTUARIOS_API_ENABLED=false` e
+  `XANO_PRONTUARIOS_WRITE_ENABLED=false`
 
 O nome legado fornecido por algumas configurações externas,
 `XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL`, é aceito como fallback para
-`XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL`. Prontuários têm uma URL
-configurável, mas não possuem módulo ou chamadas implementadas nesta etapa.
+`XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL`.
+
+### Prontuários
+
+O módulo utiliza a base `XANO_PRONTUARIOS_BASE_URL` e as operações confirmadas
+GET/POST em `/prontuario` e GET/PATCH/DELETE em
+`/prontuario/{prontuario_id}`. Os registros usam `paciente_id`,
+`profissional_id`, `numero_prontuario` e `observacoes`; os campos
+`created_at` e `data_da_atualizacao` são tratados como metadados de resposta.
+
+Pacientes e Profissionais são carregados pelas APIs já configuradas e fornecem
+somente referências positivas aos formulários. O módulo não consulta SQLite,
+não implementa Registro de Atendimento e não presume autenticação ou perfis.
+As escritas permanecem desabilitadas até
+`XANO_PRONTUARIOS_WRITE_ENABLED=true` ser definido explicitamente.
 
 As leituras de catálogos e vínculos usam cache curto de 60 segundos para evitar
 repetir GETs durante reruns do Streamlit. O cache não transforma respostas HTTP

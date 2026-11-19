@@ -59,9 +59,31 @@ def load_consultation_statuses(base_url: str, authorization: str | None):
     )
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def load_prontuarios(base_url: str, authorization: str | None):
+    settings = XanoSettings.from_environment()
+    return _cache_429(
+        lambda: XanoClient(settings).list_prontuarios()
+    )
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_prontuario(
+    prontuario_id: int,
+    base_url: str,
+    authorization: str | None,
+):
+    settings = XanoSettings.from_environment()
+    return _cache_429(
+        lambda: XanoClient(settings).get_prontuario(prontuario_id)
+    )
+
+
 def clear_xano_read_caches() -> None:
     load_records.clear()
     load_specialties.clear()
     load_professional_specialties.clear()
     load_consultations.clear()
     load_consultation_statuses.clear()
+    load_prontuarios.clear()
+    load_prontuario.clear()
