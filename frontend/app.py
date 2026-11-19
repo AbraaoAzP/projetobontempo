@@ -4,15 +4,20 @@ from typing import Any
 
 
 def _load_local_env() -> None:
-    env_path = Path(__file__).resolve().parent / ".env"
-    if not env_path.exists():
-        return
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    frontend_dir = Path(__file__).resolve().parent
+    for env_name in ("run1.env", ".env"):
+        env_path = frontend_dir / env_name
+        if not env_path.exists():
             continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(
+                key.strip(),
+                value.strip().strip('"').strip("'"),
+            )
 
 
 _load_local_env()
@@ -21,11 +26,6 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from services.database import (
-    DemoDataRequiresEmptyDatabaseError,
-    initialize_database,
-    seed_demo_data,
-)
 from services import dashboard as dashboard_service
 from services.dashboard import DashboardDataError, Metric
 from ui import apply_styles, show_page_header
@@ -38,26 +38,6 @@ st.set_page_config(
 )
 
 apply_styles()
-
-
-@st.cache_resource
-def setup_local_database() -> None:
-    initialize_database()
-
-
-setup_local_database()
-
-st.sidebar.info(
-    "Modo demonstração local · SQLite\n\n"
-    "Os dados são armazenados neste computador. A integração GET com Xano "
-    "não é usada neste modo."
-)
-if st.sidebar.button("Carregar exemplos fictícios", use_container_width=True):
-    try:
-        inserted = seed_demo_data()
-        st.sidebar.success(f"{inserted} registros de demonstração criados.")
-    except DemoDataRequiresEmptyDatabaseError as error:
-        st.sidebar.warning(str(error))
 
 
 def show_home() -> None:
@@ -75,8 +55,7 @@ def show_home() -> None:
             st.error(str(error))
 
     st.caption(
-        "Consultas: dados do SQLite local, não sincronizados com o Xano. "
-        "Os demais totais dependem de APIs Xano configuradas e autorizadas."
+        "Todos os indicadores dependem das APIs Xano configuradas e autorizadas."
     )
     if dashboard_data is not None:
         metric_columns = st.columns(4)
@@ -87,17 +66,37 @@ def show_home() -> None:
         _show_metric(
             metric_columns[2], "Especialidades", dashboard_data.specialties
         )
+        consultation_state = getattr(
+            dashboard_data.consultations,
+            "state",
+            "available",
+        )
+        consultation_message = getattr(
+            dashboard_data.consultations,
+            "message",
+            None,
+        )
         with metric_columns[3].container(border=True):
-            st.metric("Consultas", dashboard_data.consultations.total)
-            st.caption("SQLite local · não sincronizado")
+            if consultation_state == "available":
+                st.metric("Consultas", dashboard_data.consultations.total)
+                st.caption("Fonte: API Xano")
+            else:
+                st.metric("Consultas", "Indisponível")
+                if consultation_message:
+                    st.caption(consultation_message)
 
         with st.container(border=True):
-            st.metric(
-                "Consultas do dia",
-                dashboard_data.consultations.today,
-                help="Todas as consultas com início na data de hoje, no fuso de São Paulo.",
-            )
-            st.caption("Fonte: SQLite local · não sincronizado")
+            if consultation_state == "available":
+                st.metric(
+                    "Consultas do dia",
+                    dashboard_data.consultations.today,
+                    help="Todas as consultas com início na data de hoje, no fuso de São Paulo.",
+                )
+                st.caption("Fonte: API Xano")
+            else:
+                st.metric("Consultas do dia", "Indisponível")
+                if consultation_message:
+                    st.caption(consultation_message)
 
         left, right = st.columns(2)
         with left, st.container(border=True):
@@ -106,7 +105,7 @@ def show_home() -> None:
             if sum(status_counts.values()):
                 _render_clean_bar_chart(status_counts, "Status", color="#0D9488")
             else:
-                st.info("Nenhuma consulta local cadastrada.")
+                st.info("Nenhuma consulta cadastrada no Xano.")
 
         with right, st.container(border=True):
             st.subheader("Agenda · próximos 7 dias")
@@ -114,12 +113,12 @@ def show_home() -> None:
             if sum(daily_counts.values()):
                 _render_clean_bar_chart(daily_counts, "Data", color="#0284C7")
             else:
-                st.info("Nenhuma consulta local nos próximos 7 dias.")
+                st.info("Nenhuma consulta Xano nos próximos 7 dias.")
 
         with st.container(border=True):
             st.subheader("Próximas consultas")
             st.caption(
-                "Agenda local. Dados pessoais e observações clínicas não são exibidos."
+                "Agenda Xano. Dados pessoais e observações clínicas não são exibidos."
             )
             if dashboard_data.consultations.upcoming:
                 st.dataframe(
@@ -128,7 +127,7 @@ def show_home() -> None:
                     use_container_width=True,
                 )
             else:
-                st.info("Não há próximas consultas ativas na base local.")
+                st.info("Não há próximas consultas ativas no Xano.")
 
     st.divider()
     st.subheader("Acesso rápido")
@@ -152,14 +151,14 @@ def show_home() -> None:
             columns[0],
             specialties_page,
             "Especialidades",
-            "Integração Xano ainda indisponível.",
+            "Gerenciamento via catálogo Xano.",
             ":material/medical_information:",
         ),
         (
             columns[1],
             appointments_page,
             "Consultas",
-            "Agenda local SQLite; integração Xano pendente.",
+            "Agenda integrada ao Xano.",
             ":material/calendar_month:",
         ),
     ):
@@ -167,9 +166,6 @@ def show_home() -> None:
             st.subheader(title)
             st.write(description)
             st.page_link(page, label=f"Abrir {title.lower()}", icon=icon)
-
-    with st.container(border=True):
-        st.caption("Ambiente local de demonstração. Nenhuma alteração é enviada ao Xano.")
 
 
 def _show_metric(column: Any, title: str, metric: Metric) -> None:

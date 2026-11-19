@@ -252,3 +252,105 @@ A interface SHALL NOT implementar login, autenticação ou separação Admin/Mé
 
 - **WHEN** a página Consultas passa a usar o Xano
 - **THEN** o Dashboard continua lendo os dados locais de Consultas e Status, e a infraestrutura, o arquivo e os registros SQLite permanecem sem remoção ou migração nesta mudança
+
+### Requirement: Disponibilizar módulo Prontuários
+
+A interface SHALL incluir uma página Prontuários na navegação principal e
+integrá-la aos módulos administrativos existentes.
+
+Quando a integração estiver desabilitada ou a configuração estiver ausente,
+a página SHALL continuar navegável e informar indisponibilidade sem simular
+dados ou sucesso.
+
+#### Scenario: Navegar para Prontuários
+
+- **WHEN** uma pessoa seleciona o módulo Prontuários
+- **THEN** a aplicação apresenta o cabeçalho da página e o estado configurado
+  da integração
+
+### Requirement: Manter Prontuários exclusivamente no Xano
+
+A página Prontuários SHALL obter dados e executar mutações somente pelas APIs
+Xano confirmadas. SHALL NOT consultar SQLite, criar dados locais de fallback ou
+combinar fontes.
+
+#### Scenario: Integração habilitada
+
+- **WHEN** a leitura do Xano está habilitada e configurada
+- **THEN** a página apresenta somente registros retornados pela API remota
+
+#### Scenario: Falha ou ausência de configuração
+
+- **WHEN** falta configuração ou ocorre falha HTTP/transporte
+- **THEN** a página apresenta indisponibilidade ou erro sem lista local fictícia
+
+### Requirement: Invalidar cache após mutações
+
+Após criação, edição ou exclusão bem-sucedida, a interface SHALL invalidar o
+cache de Prontuários e recarregar o estado remoto.
+
+#### Scenario: Mutação bem-sucedida
+
+- **WHEN** POST, PATCH ou DELETE recebe resposta compatível de sucesso
+- **THEN** o cache é invalidado e os dados são recarregados
+
+#### Scenario: Mutação falha
+
+- **WHEN** POST, PATCH ou DELETE falha
+- **THEN** o cache não é invalidado como sucesso e o erro permanece visível
+
+### Requirement: Gerenciar vínculos na página de Profissionais
+
+A página de Profissionais SHALL permitir visualizar, criar e remover vínculos
+Profissional–Especialidade por meio das APIs Xano confirmadas.
+
+As operações SHALL permanecer desabilitadas quando a base do recurso não estiver
+configurada, a leitura estiver desabilitada ou a escrita estiver desabilitada.
+
+#### Scenario: Exibir vínculos existentes
+
+- **WHEN** o profissional selecionado possui vínculos existentes
+- **THEN** a página apresenta esses vínculos com as Especialidades existentes
+
+#### Scenario: Não há especialidades disponíveis para vincular
+
+- **WHEN** todas as Especialidades existentes já estão vinculadas ao profissional
+- **THEN** a página informa que não há novo vínculo disponível e não envia POST
+
+#### Scenario: Escrita desabilitada
+
+- **WHEN** a integração de vínculos está desabilitada ou a configuração está ausente
+- **THEN** os controles de criação e remoção permanecem indisponíveis e nenhuma
+  requisição de mutação é enviada
+
+#### Scenario: Atualizar vínculos após operação
+
+- **WHEN** uma criação ou exclusão recebe resposta compatível de sucesso
+- **THEN** o cache de vínculos é invalidado e a interface recarrega o estado atual
+
+#### Scenario: Falha de transporte ou HTTP
+
+- **WHEN** POST ou DELETE falha por transporte, resposta incompatível ou status
+  HTTP de erro
+- **THEN** o sistema apresenta o erro sem declarar sucesso ou alterar
+  artificialmente a coleção local
+
+### Requirement: Preservar integração de Consultas
+
+A página de Consultas SHALL continuar usando o GET da coleção
+`profissional_especialidade` como fonte autoritativa dos pares válidos.
+
+Criar ou remover vínculos SHALL NOT alterar o campo textual legado nem migrar
+dados automaticamente.
+
+#### Scenario: Consultar especialidades vinculadas após alteração
+
+- **WHEN** uma pessoa altera os vínculos de um profissional e abre Consultas
+- **THEN** as Especialidades disponíveis passam a refletir a coleção atualizada
+  sem inferir especialidade pelo campo textual legado
+
+#### Scenario: Remover último vínculo
+
+- **WHEN** um profissional perde todos os vínculos com o catálogo
+- **THEN** a página de Consultas não oferece nenhuma Especialidade para esse
+  profissional até que exista um novo vínculo confirmado

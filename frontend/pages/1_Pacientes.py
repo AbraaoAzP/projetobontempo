@@ -6,6 +6,7 @@ from services.xano import (
     XanoError,
     XanoSettings,
     api_enabled,
+    patients_write_enabled,
 )
 from ui import apply_styles, show_page_header
 
@@ -26,6 +27,7 @@ if feedback:
 settings = XanoSettings.from_environment()
 client = XanoClient(settings)
 enabled = api_enabled()
+write_enabled = enabled and patients_write_enabled()
 
 if not settings.patients_base_url or not settings.patients_base_url.strip():
     st.warning(
@@ -47,7 +49,7 @@ with st.form("create_patient", clear_on_submit=True):
     create_submitted = st.form_submit_button(
         "Cadastrar paciente",
         type="primary",
-        disabled=not enabled,
+        disabled=not write_enabled,
     )
 
 if create_submitted:
@@ -137,7 +139,7 @@ if list_succeeded and patients:
                 )
                 update_submitted = st.form_submit_button(
                     "Salvar alterações",
-                    disabled=not enabled,
+                    disabled=not write_enabled,
                 )
             if update_submitted:
                 validation_error = validate_contact(
@@ -173,13 +175,13 @@ if list_succeeded and patients:
             confirmed = st.checkbox(
                 f"Confirmo a exclusão de {patient['nome']}",
                 key=f"patient_delete_confirm_{patient_id}",
-                disabled=not enabled,
+            disabled=not write_enabled,
             )
             if st.button(
                 "Excluir paciente",
                 key=f"patient_delete_{patient_id}",
                 type="secondary",
-                disabled=not enabled or not confirmed,
+                disabled=not write_enabled or not confirmed,
             ):
                 try:
                     client.delete_record(RESOURCE, patient_id)

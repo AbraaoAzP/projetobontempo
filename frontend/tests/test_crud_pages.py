@@ -33,6 +33,12 @@ class CrudPageTests:
             if not key.startswith("XANO_")
         }
         values["XANO_API_ENABLED"] = enabled
+        values["XANO_PACIENTES_WRITE_ENABLED"] = (
+            "true" if enabled == "true" else "false"
+        )
+        values["XANO_PROFISSIONAIS_WRITE_ENABLED"] = (
+            "true" if enabled == "true" else "false"
+        )
         values["XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED"] = relations_enabled
         values["XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED"] = relation_writes
         values["XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL"] = (
@@ -59,10 +65,6 @@ class CrudPageTests:
             page.text_input(key=f"{self.prefix}_create_name").set_value(" Novo ")
             page.text_input(key=f"{self.prefix}_create_phone").set_value(" 11999999999 ")
             page.text_input(key=f"{self.prefix}_create_email").set_value("")
-            if self.resource == "profissionais":
-                page.text_input(key="professional_create_specialty").set_value(
-                    " Clínica "
-                )
             page.button(
                 key=f"FormSubmitter:create_{self.prefix}-Cadastrar "
                 + ("paciente" if self.resource == "pacientes" else "profissional")
@@ -74,7 +76,7 @@ class CrudPageTests:
         self.assertEqual(payload["telefone"], " 11999999999 ")
         self.assertIsNone(payload["email"])
         if self.resource == "profissionais":
-            self.assertEqual(payload["especialidade"], " Clínica ")
+            self.assertNotIn("especialidade", payload)
         self.assertTrue(any("cadastrado" in item.value for item in page.success))
         self.assertEqual(len(page.exception), 0)
 
@@ -166,10 +168,6 @@ class CrudPageTests:
             )
             name_key = f"{self.prefix}_edit_name_{self.record['id']}"
             page.text_input(key=name_key).set_value("Nome atualizado")
-            if self.resource == "profissionais":
-                page.text_input(
-                    key=f"professional_edit_specialty_{self.record['id']}"
-                ).set_value("Especialidade atualizada")
             form_key = (
                 f"FormSubmitter:edit_{self.prefix}_{self.record['id']}"
                 "-Salvar alterações"
@@ -182,10 +180,7 @@ class CrudPageTests:
             update.call_args.args[2]["nome"], "Nome atualizado"
         )
         if self.resource == "profissionais":
-            self.assertEqual(
-                update.call_args.args[2]["especialidade"],
-                "Especialidade atualizada",
-            )
+            self.assertNotIn("especialidade", update.call_args.args[2])
         self.assertTrue(any("atualizado" in item.value for item in page.success))
         self.assertEqual(len(page.exception), 0)
 
@@ -260,11 +255,6 @@ class CrudPageTests:
                 "nome": "Nome",
                 "telefone": "11999999999",
                 "email": None,
-                **(
-                    {"especialidade": None}
-                    if self.resource == "profissionais"
-                    else {}
-                ),
             },
         )
         self.assertTrue(any("HTTP 429" in item.value for item in page.error))
@@ -297,6 +287,50 @@ class ProfessionalPageTests(CrudPageTests, unittest.TestCase):
         "email": "professional@example.invalid",
         "especialidade": "Especialidade textual",
     }
+
+    def test_listing_prefers_relation_and_falls_back_to_legacy_text(self) -> None:
+        professionals = [
+            {
+                "id": 6,
+                "nome": "Visconde",
+                "telefone": "11999999999",
+                "email": "",
+                "especialidade": "Texto legado antigo",
+            },
+            {
+                "id": 21,
+                "nome": "Profissional legado",
+                "telefone": "11888888888",
+                "email": "",
+                "especialidade": "Especialidade textual legada",
+            },
+        ]
+        specialty = {"id": 3, "nome": "Cardiologia"}
+        association = {
+            "id": 61,
+            "profissional_id": 6,
+            "especialidade_id": 3,
+        }
+
+        with self._environment(
+            relations_enabled="true",
+            relation_writes="true",
+        ), patch.object(
+            XanoClient, "list_records", return_value=professionals
+        ), patch.object(
+            XanoClient, "list_specialties", return_value=[specialty]
+        ), patch.object(
+            XanoClient,
+            "list_professional_specialties",
+            return_value=[association],
+        ):
+            page = self._run_page()
+
+        dataframe_text = str(page.dataframe[0].value)
+        self.assertIn("Cardiologia", dataframe_text)
+        self.assertIn("Especialidade textual legada", dataframe_text)
+        self.assertNotIn("Texto legado antigo", dataframe_text)
+        self.assertEqual(len(page.exception), 0)
 
     def test_professional_specialties_writes_remain_disabled_by_default(self) -> None:
         with self._environment(), patch.object(
@@ -526,6 +560,7 @@ class ProfessionalPageTests(CrudPageTests, unittest.TestCase):
             any("Nenhuma especialidade vinculada" in item.value for item in page.info)
         )
         self.assertEqual(len(page.exception), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

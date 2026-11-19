@@ -1,5 +1,4 @@
 import os
-import tempfile
 import unittest
 from datetime import date, datetime, time
 from pathlib import Path
@@ -7,7 +6,6 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from services import dashboard
-from services import database
 from services.xano_cache import clear_xano_read_caches
 from services.xano import XanoHTTPError
 from streamlit.testing.v1 import AppTest
@@ -31,59 +29,41 @@ class DashboardServiceTests(unittest.TestCase):
     def tearDown(self) -> None:
         clear_xano_read_caches()
 
-    def test_load_dashboard_reads_real_local_consultation_fixture(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            db_path = Path(temporary_directory) / "dashboard.sqlite3"
-            database.initialize_database(db_path)
-            patient_id = database.create_patient(
-                "Paciente de teste",
-                "11900000000",
-                None,
-                db_path,
-            )
-            specialty_id = database.create_specialty("Especialidade de teste", db_path)
-            professional_id = database.create_professional(
-                "Profissional de teste",
-                "11900000001",
-                None,
-                [specialty_id],
-                db_path,
-            )
-            database.create_appointment(
-                patient_id,
-                professional_id,
-                specialty_id,
-                date(2030, 5, 20),
-                time(9, 0),
-                time(9, 30),
-                db_path,
-            )
-            local_rows = database.list_appointment_summaries(db_path)
-            self.assertEqual(
-                set(local_rows[0]),
-                {"inicio_em", "status_codigo", "status_nome"},
-            )
-            environment = {
-                key: value
-                for key, value in os.environ.items()
-                if not key.startswith("XANO_")
+    def test_load_dashboard_reads_xano_consultations(self) -> None:
+        environment = {
+            "XANO_CONSULTAS_API_ENABLED": "true",
+            "XANO_CONSULTAS_BASE_URL": "https://consultations.example.invalid/api",
+            "XANO_STATUS_CONSULTA_API_ENABLED": "true",
+            "XANO_STATUS_CONSULTA_BASE_URL": "https://statuses.example.invalid/api",
+        }
+        appointments = [
+            {
+                "id": 1,
+                "paciente_id": 11,
+                "profissional_id": 21,
+                "especialidade_id": 31,
+                "data_e_hora_do_agendamento": 1898780400000,
+                "status_consulta_id": 41,
+                "observacoes": None,
             }
-            with patch.dict(os.environ, environment, clear=True):
-                data = dashboard.load_dashboard(
-                    today=date(2030, 5, 20),
-                    now=datetime(2030, 5, 20, 8, 0, tzinfo=LOCAL_TZ),
-                    db_path=db_path,
-                )
+        ]
+        statuses = [{"id": 41, "nome": "Agendada", "created_at": 1}]
 
+        with patch.dict(os.environ, environment, clear=True), patch(
+            "services.dashboard.load_consultations",
+            return_value=appointments,
+        ), patch(
+            "services.dashboard.load_consultation_statuses",
+            return_value=statuses,
+        ):
+            data = dashboard.load_dashboard(
+                today=date(2030, 5, 20),
+                now=datetime(2030, 5, 20, 8, 0, tzinfo=LOCAL_TZ),
+            )
+
+        self.assertEqual(data.consultations.state, "available")
         self.assertEqual(data.consultations.total, 1)
-        self.assertEqual(data.consultations.today, 1)
         self.assertEqual(data.consultations.status_counts["Agendada"], 1)
-        self.assertEqual(
-            data.consultations.upcoming,
-            [
-                {"Data": "20/05/2030", "Horário": "09:00", "Status": "Agendada"}
-            ],
-        )
 
     def test_summarizes_local_consultations_without_personal_data(self) -> None:
         appointments = [
@@ -167,16 +147,17 @@ class DashboardServiceTests(unittest.TestCase):
             if not key.startswith("XANO_")
         }
         with patch.dict(os.environ, environment, clear=True), patch.object(
-            dashboard.database, "list_appointment_summaries", return_value=[]
-        ), patch.object(
-            dashboard.database, "get_statuses", return_value=STATUSES
-        ), patch.object(dashboard.XanoClient, "list_records") as list_records:
+            dashboard.XanoClient, "list_records"
+        ) as list_records, patch(
+            "services.dashboard.load_consultations"
+        ) as list_consultations:
             data = dashboard.load_dashboard(
                 today=date(2030, 5, 20),
                 now=datetime(2030, 5, 20, 8, 0, tzinfo=LOCAL_TZ),
             )
 
         list_records.assert_not_called()
+        list_consultations.assert_not_called()
         self.assertEqual(data.patients.state, "unavailable")
         self.assertEqual(data.professionals.state, "unavailable")
         self.assertEqual(data.specialties.state, "unavailable")
@@ -188,10 +169,6 @@ class DashboardServiceTests(unittest.TestCase):
             "XANO_PACIENTES_BASE_URL": "https://patients.example.invalid/api",
         }
         with patch.dict(os.environ, environment, clear=True), patch.object(
-            dashboard.database, "list_appointment_summaries", return_value=[]
-        ), patch.object(
-            dashboard.database, "get_statuses", return_value=STATUSES
-        ), patch.object(
             dashboard.XanoClient,
             "list_records",
             side_effect=[[{"id": 1}, {"id": 2}], XanoHTTPError(403)],
@@ -217,10 +194,6 @@ class DashboardServiceTests(unittest.TestCase):
             },
             clear=True,
         ), patch.object(
-            dashboard.database, "list_appointment_summaries", return_value=[]
-        ), patch.object(
-            dashboard.database, "get_statuses", return_value=STATUSES
-        ), patch.object(
             dashboard.XanoClient,
             "list_records",
             side_effect=[[], XanoHTTPError(403)],
@@ -234,7 +207,7 @@ class DashboardServiceTests(unittest.TestCase):
         self.assertEqual(failed_data.professionals.state, "error")
         self.assertIn("HTTP 403", failed_data.professionals.message or "")
 
-    def test_dashboard_renders_local_consultations_without_names_or_http(self) -> None:
+    def test_dashboard_renders_consultations_without_names_or_http(self) -> None:
         synthetic_data = dashboard.DashboardData(
             patients=dashboard.Metric(
                 None, "unavailable", "Xano", "A URL da API não está configurada."
@@ -268,7 +241,7 @@ class DashboardServiceTests(unittest.TestCase):
 
         request.assert_not_called()
         self.assertEqual(len(page.exception), 0)
-        self.assertTrue(any("SQLite local" in item.value for item in page.caption))
+        self.assertTrue(any("APIs Xano" in item.value for item in page.caption))
         self.assertTrue(any("HTTP 403" in item.value for item in page.error))
         self.assertTrue(any("Próximas consultas" in item.value for item in page.subheader))
         self.assertTrue(any("Especialidades" in item.value for item in page.subheader))
@@ -302,10 +275,50 @@ class DashboardServiceTests(unittest.TestCase):
 
         self.assertEqual(len(page.exception), 0)
         self.assertTrue(
-            any("Nenhuma consulta local cadastrada" in item.value for item in page.info)
+            any("Nenhuma consulta cadastrada no Xano" in item.value for item in page.info)
         )
         self.assertTrue(
-            any("Não há próximas consultas ativas" in item.value for item in page.info)
+            any("Não há próximas consultas ativas no Xano" in item.value for item in page.info)
+        )
+
+    def test_dashboard_accepts_consultation_summary_without_status_attributes(self) -> None:
+        class LegacyConsultationSummary:
+            total = 1
+            today = 1
+            status_counts = {"Agendada": 1}
+            next_seven_days = {"09/11": 1}
+            upcoming = [
+                {
+                    "Data": "09/11/2026",
+                    "Horário": "14:00",
+                    "Status": "Agendada",
+                }
+            ]
+
+        legacy_data = dashboard.DashboardData(
+            patients=dashboard.Metric(
+                None, "unavailable", "Xano", "Integração indisponível."
+            ),
+            professionals=dashboard.Metric(
+                None, "unavailable", "Xano", "Integração indisponível."
+            ),
+            specialties=dashboard.Metric(
+                None, "unavailable", "Xano", "Integração indisponível."
+            ),
+            consultations=LegacyConsultationSummary(),
+        )
+        with patch.object(dashboard, "load_dashboard", return_value=legacy_data):
+            page = AppTest.from_file(
+                str(FRONTEND / "app.py"), default_timeout=10
+            ).run()
+
+        self.assertEqual(len(page.exception), 0)
+        consult_metrics = [
+            metric for metric in page.metric
+            if metric.label in {"Consultas", "Consultas do dia"}
+        ]
+        self.assertTrue(
+            any(metric.value == "1" for metric in consult_metrics)
         )
 
 
