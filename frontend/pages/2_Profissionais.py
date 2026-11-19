@@ -6,7 +6,11 @@ from services.xano import (
     XanoError,
     XanoSettings,
     api_enabled,
+    professional_specialties_api_enabled,
+    professional_specialties_write_enabled,
+    specialties_api_enabled,
 )
+from services.xano_cache import clear_xano_read_caches
 from ui import apply_styles, show_page_header
 
 
@@ -209,3 +213,136 @@ if list_succeeded and professionals:
                         "Profissional excluído."
                     )
                     st.rerun()
+
+st.divider()
+st.subheader("Especialidades dos profissionais")
+
+relations_enabled = professional_specialties_api_enabled()
+relations_write_enabled = (
+    relations_enabled
+    and professional_specialties_write_enabled()
+)
+
+if not specialties_api_enabled():
+    st.warning("A leitura do catálogo de Especialidades está desabilitada.")
+elif not relations_enabled:
+    st.warning(
+        "XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true não está habilitado."
+    )
+elif not settings.professional_specialties_base_url:
+    st.error(
+        "A URL da API de vínculos Profissional–Especialidade não está configurada."
+    )
+elif not professionals:
+    st.info("Cadastre um profissional para gerenciar seus vínculos.")
+else:
+    try:
+        specialties = client.list_specialties()
+        associations = client.list_professional_specialties()
+    except XanoError as error:
+        st.error(f"Não foi possível carregar os vínculos: {error}")
+    else:
+        specialty_names = {
+            int(specialty["id"]): str(specialty["nome"])
+            for specialty in specialties
+        }
+        associations_by_professional: dict[int, list[dict[str, int]]] = {}
+        for association in associations:
+            associations_by_professional.setdefault(
+                int(association["profissional_id"]), []
+            ).append(association)
+
+        selected_professional_id = st.selectbox(
+            "Profissional",
+            [int(professional["id"]) for professional in professionals],
+            format_func=lambda professional_id: next(
+                f"{professional['nome']} · ID {professional_id}"
+                for professional in professionals
+                if int(professional["id"]) == professional_id
+            ),
+            key="professional_specialty_selection",
+        )
+        current_associations = associations_by_professional.get(
+            selected_professional_id, []
+        )
+
+        st.write("Especialidades vinculadas")
+        if current_associations:
+            for association in current_associations:
+                specialty_id = int(association["especialidade_id"])
+                if specialty_id not in specialty_names:
+                    continue
+                with st.container(border=True):
+                    st.write(specialty_names[specialty_id])
+                    confirmed = st.checkbox(
+                        f"Confirmo a remoção de {specialty_names[specialty_id]}",
+                        key=(
+                            "professional_specialty_delete_confirm_"
+                            f"{association['id']}"
+                        ),
+                        disabled=not relations_write_enabled,
+                    )
+                    if st.button(
+                        "Remover vínculo",
+                        key=f"professional_specialty_delete_{association['id']}",
+                        disabled=not relations_write_enabled or not confirmed,
+                    ):
+                        try:
+                            client.delete_professional_specialty(
+                                int(association["id"])
+                            )
+                        except XanoError as error:
+                            st.error(f"Não foi possível remover o vínculo: {error}")
+                        else:
+                            clear_xano_read_caches()
+                            st.session_state["professionals_feedback"] = (
+                                "Vínculo removido."
+                            )
+                            st.rerun()
+        else:
+            st.info("Nenhuma especialidade vinculada.")
+
+        linked_specialty_ids = {
+            int(association["especialidade_id"])
+            for association in current_associations
+        }
+        available_specialties = [
+            specialty
+            for specialty in specialties
+            if int(specialty["id"]) not in linked_specialty_ids
+        ]
+        if available_specialties:
+            specialty_id_to_add = st.selectbox(
+                "Especialidade para vincular",
+                [int(specialty["id"]) for specialty in available_specialties],
+                format_func=lambda specialty_id: specialty_names[specialty_id],
+                key="professional_specialty_create_selection",
+            )
+            if st.button(
+                "Adicionar vínculo",
+                disabled=not relations_write_enabled,
+                key="professional_specialty_create",
+            ):
+                pair_exists = any(
+                    int(association["profissional_id"]) == selected_professional_id
+                    and int(association["especialidade_id"]) == specialty_id_to_add
+                    for association in associations
+                )
+                if pair_exists:
+                    st.error("O vínculo já está cadastrado.")
+                else:
+                    try:
+                        client.create_professional_specialty(
+                            selected_professional_id,
+                            specialty_id_to_add,
+                        )
+                    except XanoError as error:
+                        st.error(f"Não foi possível criar o vínculo: {error}")
+                    else:
+                        clear_xano_read_caches()
+                        st.session_state["professionals_feedback"] = (
+                            "Vínculo criado."
+                        )
+                        st.rerun()
+        else:
+            st.info("Não há nova especialidade disponível para vincular.")

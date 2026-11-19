@@ -22,6 +22,7 @@ from services.xano import (
     XANO_PROFISSIONAIS_BASE_URL_ENV,
     XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV,
     XANO_PROFISSIONAL_ESPECIALIDADES_BASE_URL_ENV,
+    XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV,
     XANO_STATUS_CONSULTA_API_ENABLED_ENV,
     XANO_STATUS_CONSULTA_BASE_URL_ENV,
     ResourceEndpoints,
@@ -40,6 +41,7 @@ from services.xano import (
     consultations_api_enabled,
     consultations_write_enabled,
     professional_specialties_api_enabled,
+    professional_specialties_write_enabled,
     specialties_api_enabled,
     specialties_write_enabled,
 )
@@ -94,6 +96,14 @@ class TestXanoClient(unittest.TestCase):
             ),
             professional_specialties_base_url=(
                 "https://associations.example.invalid/api:associations"
+            ),
+            professional_specialties=ResourceEndpoints(
+                collection_path="profissional_especialidade",
+                item_path="profissional_especialidade/{profissional_especialidade_id}",
+                create_path="profissional_especialidade",
+                update_path=None,
+                delete_path="profissional_especialidade/{profissional_especialidade_id}",
+                identifier_parameter="profissional_especialidade_id",
             ),
         )
         self.client = XanoClient(self.settings, self.transport)
@@ -723,6 +733,81 @@ class TestXanoClient(unittest.TestCase):
                     clear=True,
                 ), self.assertRaises(XanoResponseError):
                     client.list_professional_specialties()
+
+    def test_professional_specialty_create_and_delete_are_simulated(self) -> None:
+        association = {
+            "id": 61,
+            "profissional_id": 21,
+            "especialidade_id": 31,
+        }
+        client = XanoClient(self.settings, self.transport)
+
+        with patch.dict(
+            os.environ,
+            {
+                XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV: "true",
+                XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV: "true",
+            },
+            clear=True,
+        ):
+            self.transport.request.return_value = self._response(association)
+            self.assertEqual(
+                client.create_professional_specialty(21, 31),
+                association,
+            )
+            create_call = self.transport.request.call_args
+            self.assertEqual(create_call.args[0], "POST")
+            self.assertEqual(
+                create_call.args[1],
+                "https://associations.example.invalid/api:associations/"
+                "profissional_especialidade",
+            )
+            self.assertEqual(
+                create_call.kwargs["json"],
+                {"profissional_id": 21, "especialidade_id": 31},
+            )
+
+            self.transport.request.return_value = self._response(None)
+            client.delete_professional_specialty(61)
+            delete_call = self.transport.request.call_args
+            self.assertEqual(delete_call.args[0], "DELETE")
+            self.assertEqual(
+                delete_call.args[1],
+                "https://associations.example.invalid/api:associations/"
+                "profissional_especialidade/61",
+            )
+
+    def test_professional_specialty_mutations_reject_disabled_writes_and_invalid_ids(
+        self,
+    ) -> None:
+        client = XanoClient(self.settings, self.transport)
+        with patch.dict(
+            os.environ,
+            {
+                XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV: "true",
+                XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV: "false",
+            },
+            clear=True,
+        ):
+            with self.assertRaises(XanoConfigurationError):
+                client.create_professional_specialty(21, 31)
+            with self.assertRaises(XanoConfigurationError):
+                client.delete_professional_specialty(61)
+
+        with patch.dict(
+            os.environ,
+            {
+                XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV: "true",
+                XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV: "true",
+            },
+            clear=True,
+        ):
+            with self.assertRaises(XanoResponseError):
+                client.create_professional_specialty(0, 31)
+            with self.assertRaises(XanoResponseError):
+                client.create_professional_specialty(True, 31)
+            with self.assertRaises(XanoResponseError):
+                client.delete_professional_specialty(-1)
 
     def test_professional_specialty_read_requires_explicit_configuration(self) -> None:
         client = XanoClient(self.settings, self.transport)

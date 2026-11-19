@@ -33,6 +33,9 @@ XANO_STATUS_CONSULTA_API_ENABLED_ENV = "XANO_STATUS_CONSULTA_API_ENABLED"
 XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV = (
     "XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED"
 )
+XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV = (
+    "XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED"
+)
 XANO_CONSULTAS_WRITE_ENABLED_ENV = "XANO_CONSULTAS_WRITE_ENABLED"
 DEFAULT_PACIENTES_BASE_URL = (
     "https://x8ki-letl-twmt.n7.xano.io/api:consultorio-cadastro-pacientes"
@@ -200,7 +203,11 @@ class XanoSettings:
     )
     professional_specialties_base_url: str | None = None
     professional_specialties: ResourceEndpoints = ResourceEndpoints(
-        collection_path="profissional_especialidade"
+        collection_path="profissional_especialidade",
+        create_path="profissional_especialidade",
+        item_path="profissional_especialidade/{profissional_especialidade_id}",
+        delete_path="profissional_especialidade/{profissional_especialidade_id}",
+        identifier_parameter="profissional_especialidade_id",
     )
 
     @classmethod
@@ -268,7 +275,11 @@ class XanoSettings:
                 collection_path="status_consulta"
             ),
             professional_specialties=ResourceEndpoints(
-                collection_path="profissional_especialidade"
+                collection_path="profissional_especialidade",
+                create_path="profissional_especialidade",
+                item_path="profissional_especialidade/{profissional_especialidade_id}",
+                delete_path="profissional_especialidade/{profissional_especialidade_id}",
+                identifier_parameter="profissional_especialidade_id",
             ),
             authorization=os.getenv(XANO_AUTHORIZATION_ENV),
         )
@@ -512,6 +523,56 @@ class XanoClient:
                 "A resposta do Xano contém vínculos Profissional–Especialidade duplicados."
             )
         return records
+
+    def create_professional_specialty(
+        self,
+        professional_id: int,
+        specialty_id: int,
+    ) -> dict[str, int]:
+        _require_professional_specialty_writes_enabled()
+        if (
+            isinstance(professional_id, bool)
+            or not isinstance(professional_id, int)
+            or professional_id < 1
+            or isinstance(specialty_id, bool)
+            or not isinstance(specialty_id, int)
+            or specialty_id < 1
+        ):
+            raise XanoResponseError(
+                "Os IDs do vínculo Profissional–Especialidade são inválidos."
+            )
+        endpoints = self._settings.endpoints_for("profissional_especialidade")
+        response = self._send(
+            "profissional_especialidade",
+            "POST",
+            endpoints.create_path,
+            {
+                "profissional_id": professional_id,
+                "especialidade_id": specialty_id,
+            },
+        )
+        return _validate_professional_specialty(_parse_json(response))
+
+    def delete_professional_specialty(
+        self,
+        professional_specialty_id: int,
+    ) -> None:
+        _require_professional_specialty_writes_enabled()
+        if (
+            isinstance(professional_specialty_id, bool)
+            or not isinstance(professional_specialty_id, int)
+            or professional_specialty_id < 1
+        ):
+            raise XanoResponseError(
+                "O ID do vínculo Profissional–Especialidade é inválido."
+            )
+        endpoints = self._settings.endpoints_for("profissional_especialidade")
+        path = _format_item_path(
+            endpoints.delete_path,
+            professional_specialty_id,
+            endpoints.identifier_parameter,
+        )
+        self._send("profissional_especialidade", "DELETE", path)
 
     def create_consultation(
         self, payload: Mapping[str, Any]
@@ -991,6 +1052,15 @@ def professional_specialties_api_enabled() -> bool:
     )
 
 
+def professional_specialties_write_enabled() -> bool:
+    return (
+        os.getenv(
+            XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV, ""
+        ).strip().lower()
+        == "true"
+    )
+
+
 def consultations_write_enabled() -> bool:
     return (
         os.getenv(XANO_CONSULTAS_WRITE_ENABLED_ENV, "")
@@ -1022,6 +1092,16 @@ def _require_professional_specialties_api_enabled() -> None:
             "A API de vínculos Profissional–Especialidade está desabilitada "
             "pela configuração "
             f"{XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED_ENV}."
+        )
+
+
+def _require_professional_specialty_writes_enabled() -> None:
+    _require_professional_specialties_api_enabled()
+    if not professional_specialties_write_enabled():
+        raise XanoConfigurationError(
+            "As gravações de vínculos Profissional–Especialidade estão "
+            "desabilitadas pela configuração "
+            f"{XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED_ENV}."
         )
 
 

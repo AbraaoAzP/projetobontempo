@@ -83,7 +83,8 @@ As leituras podem ser habilitadas separadamente das gravações:
   `XANO_CONSULTAS_WRITE_ENABLED=false`
 - Status de Consulta: `XANO_STATUS_CONSULTA_API_ENABLED=true`
 - Profissional–Especialidade:
-  `XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true`
+  `XANO_PROFISSIONAL_ESPECIALIDADES_API_ENABLED=true` e
+  `XANO_PROFISSIONAL_ESPECIALIDADES_WRITE_ENABLED=false`
 
 O nome legado fornecido por algumas configurações externas,
 `XANO_PROFISSIONAIS_ESPECIALIDADES_BASE_URL`, é aceito como fallback para
