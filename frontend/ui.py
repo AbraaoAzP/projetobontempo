@@ -12,6 +12,7 @@ _MATERIAL_ICON_FALLBACKS = {
     ":material/clinical_notes:": "📋",
     ":material/description:": "📄",
     ":material/home:": "🏥",
+    ":material/assignment:": "📋",
 }
 
 

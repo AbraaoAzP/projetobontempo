@@ -37,7 +37,7 @@ def load_specialties(base_url: str, authorization: str | None):
     return _cache_429(lambda: XanoClient(settings).list_specialties())
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_professional_specialties(base_url: str, authorization: str | None):
     settings = XanoSettings.from_environment()
     return _cache_429(
